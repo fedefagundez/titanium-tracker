@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coldsteel Directive [CSD-1] — Caldari State Militia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#070a0c; --panel:#0e1417; --panel-alt:#131b1f;
+    --steel-blue:#3a8fc7; --steel-bright:#5fc9ff; --hostile:#d1483f;
+    --ink:#dbe6ea; --ink-dim:#8ea0a8; --line:#2a3a42; --line-dim:#151d21;
+    --online:#3ddc97; --contested:#e0a83e;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--void); color:var(--ink);
+    font-family:'Rajdhani', sans-serif; font-weight:600; font-size:16px;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--steel-blue); color:var(--void); }
+  a{ color:inherit; text-decoration:none; }
+  img,svg{ display:block; }
+  .display{ font-family:'Rajdhani', sans-serif; font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
+  .mono{ font-family:'Space Mono', monospace; }
+  .wrap{ max-width:1280px; margin:0 auto; padding:0 20px; }
+  button{ font-family:inherit; cursor:pointer; }
+  input, textarea{ font-family:inherit; }
+  :focus-visible{ outline:2px solid var(--steel-bright); outline-offset:2px; }
+
+  /* --- corporate HUD panel: single cut corner + top accent bar --- */
+  .panel{
+    position:relative; background:var(--panel); border:1px solid var(--line);
+    border-top:2px solid var(--steel-blue);
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  }
+  .panel.no-clip{ clip-path:none; }
+  .panel.flat-top{ border-top:1px solid var(--line); }
+
+  /* section divider: thin grid line with center tick */
+  .divider{ position:relative; height:1px; background:var(--line-dim); }
+  .divider::after{
+    content:""; position:absolute; top:50%; left:50%; width:8px; height:8px;
+    background:var(--void); border:1px solid var(--steel-blue); transform:translate(-50%,-50%) rotate(45deg);
+  }
+
+  /* --- badges --- */
+  .badge{
+    display:inline-flex; align-items:center; gap:4px; border:1px solid; padding:3px 9px;
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
+  }
+  .badge.hostile{ color:var(--hostile); border-color:rgba(209,72,63,.5); background:rgba(209,72,63,.12); }
+  .badge.allied{ color:var(--steel-bright); border-color:rgba(95,201,255,.4); background:rgba(95,201,255,.1); }
+  .badge.neutral{ color:var(--contested); border-color:rgba(224,168,62,.4); background:rgba(224,168,62,.1); }
+  .badge.kill{ color:var(--steel-bright); border-color:rgba(95,201,255,.4); background:rgba(95,201,255,.1); }
+  .badge.loss{ color:var(--hostile); border-color:rgba(209,72,63,.5); background:rgba(209,72,63,.12); }
+
+  /* --- buttons --- */
+  .btn{
+    position:relative; display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px 26px; font-size:15px; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
+    border:none; transition:background .15s, color .15s, border-color .15s;
+    clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px);
+  }
+  .btn-primary{ background:var(--steel-blue); color:var(--void); }
+  .btn-primary:hover{ background:var(--steel-bright); }
+  .btn-secondary{ background:transparent; color:var(--ink); border:1px solid var(--line); clip-path:none; padding:12px 25px; }
+  .btn-secondary:hover{ border-color:var(--steel-blue); color:var(--steel-bright); }
+  .btn-danger{ background:var(--hostile); color:var(--ink); }
+  .btn-danger:hover{ opacity:.85; }
+  .btn-disabled{ background:transparent; color:rgba(142,160,168,.5); border:1px solid var(--line-dim); clip-path:none; cursor:not-allowed; }
+  .btn-block{ width:100%; }
+  .btn-sm{ padding:9px 18px; font-size:13px; }
+
+  /* --- header --- */
+  header{
+    position:fixed; top:0; left:0; right:0; z-index:40;
+    background:rgba(7,10,12,.96); backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);
+  }
+  .header-inner{ display:flex; align-items:center; justify-content:space-between; padding:14px 20px; }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{
+    width:38px; height:38px; display:flex; align-items:center; justify-content:center;
+    background:var(--steel-blue); color:var(--void);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  }
+  .brand-name{ font-size:21px; line-height:1; color:var(--ink); }
+  .brand-tag{ font-size:11.5px; font-weight:700; color:var(--steel-bright); margin-top:3px; letter-spacing:.06em; }
+  nav.desktop-nav{ display:none; gap:32px; align-items:center; }
+  nav.desktop-nav a{ font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-dim); }
+  nav.desktop-nav a:hover{ color:var(--steel-bright); }
+  .header-cta{ display:none; }
+  .burger{ background:none; border:none; color:var(--ink); display:flex; }
+  .mobile-nav{ display:none; border-top:1px solid var(--line); padding:18px 20px 22px; flex-direction:column; gap:18px; }
+  .mobile-nav.open{ display:flex; }
+  .mobile-nav a{ font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-dim); }
+
+  @media(min-width:768px){
+    nav.desktop-nav{ display:flex; }
+    .header-cta{ display:block; }
+    .burger{ display:none; }
+  }
+
+  main{ padding-top:70px; }
+
+  /* --- hero --- */
+  .hero{
+    position:relative; overflow:hidden; padding:100px 20px;
+    border-bottom:1px solid var(--line);
+    background:
+      linear-gradient(180deg, rgba(58,143,199,.10), transparent 55%),
+      radial-gradient(circle at 85% 15%, rgba(95,201,255,.12), transparent 40%);
+  }
+  .hero::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0px, rgba(255,255,255,.02) 1px, transparent 1px, transparent 3px);
+  }
+  .hero::after{
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+    background-image:
+      linear-gradient(90deg, rgba(58,143,199,.06) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(58,143,199,.06) 1px, transparent 1px);
+    background-size:64px 64px;
+  }
+  .hero-inner{ position:relative; max-width:780px; margin:0 auto; text-align:center; }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px; margin-bottom:22px;
+    border:1px solid rgba(95,201,255,.4); background:rgba(95,201,255,.08);
+    padding:6px 14px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.18em; color:var(--steel-bright);
+  }
+  .hero h1{ font-size:46px; line-height:1.02; color:var(--ink); font-weight:700; }
+  .hero h1 .accent{ color:var(--steel-bright); }
+  .hero p{ max-width:540px; margin:26px auto 0; color:var(--ink-dim); font-size:17px; font-weight:500; line-height:1.5; }
+  .hero-actions{ margin-top:38px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
+  @media(min-width:640px){
+    .hero h1{ font-size:66px; }
+    .hero-actions{ flex-direction:row; }
+  }
+
+  /* --- section shell --- */
+  section.block{ padding:68px 20px; }
+  section.block.bordered{ border-top:1px solid var(--line); }
+  .section-title{ font-size:28px; color:var(--ink); margin-bottom:34px; }
+  .section-title .accent{ color:var(--steel-bright); }
+
+  /* --- KPI grid --- */
+  .kpi-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  .kpi-card{ padding:18px; }
+  .kpi-card svg{ color:var(--steel-blue); margin-bottom:14px; }
+  .kpi-value{ font-family:'Space Mono',monospace; font-weight:700; font-size:29px; color:var(--ink); }
+  .kpi-label{ margin-top:6px; font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); }
+  .kpi-trend{ margin-top:9px; font-size:11.5px; font-weight:700; color:var(--steel-bright); }
+  @media(min-width:640px){ .kpi-grid{ grid-template-columns:repeat(3,1fr); } }
+  @media(min-width:1024px){ .kpi-grid{ grid-template-columns:repeat(5,1fr); } }
+
+  /* --- controls row --- */
+  .controls-row{ display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:32px; }
+  .controls-row h2{ margin-bottom:5px; }
+  .controls-row .sub{ display:flex; align-items:center; gap:6px; font-size:15px; font-weight:500; color:var(--ink-dim); }
+  .controls-group{ display:flex; flex-direction:column; gap:16px; width:100%; }
+  @media(min-width:640px){ .controls-group{ flex-direction:row; align-items:flex-end; width:auto; } }
+  .field{ width:100%; }
+  @media(min-width:640px){ .field.w-48{ width:200px; } .field.w-56{ width:232px; } }
+  .field-label{ display:block; margin-bottom:7px; font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); }
+
+  /* --- dropdown --- */
+  .dropdown{ position:relative; width:100%; }
+  .dropdown-btn{
+    width:100%; display:flex; align-items:center; justify-content:space-between;
+    background:var(--panel-alt); border:1px solid var(--line); color:var(--ink);
+    padding:10px 13px; font-size:15px; font-weight:600; transition:border-color .15s;
+  }
+  .dropdown-btn:hover{ border-color:var(--steel-blue); }
+  .dropdown-btn svg{ color:var(--steel-blue); transition:transform .15s; }
+  .dropdown-btn.open svg{ transform:rotate(180deg); }
+  .dropdown-list{
+    display:none; position:absolute; z-index:20; margin-top:4px; width:100%;
+    background:var(--panel-alt); border:1px solid var(--line); box-shadow:0 14px 26px rgba(0,0,0,.5);
+  }
+  .dropdown-list.open{ display:block; }
+  .dropdown-list button{
+    width:100%; text-align:left; background:none; border:none; color:var(--ink); font-weight:600;
+    padding:10px 13px; font-size:15px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .dropdown-list button:hover{ background:rgba(95,201,255,.1); color:var(--steel-bright); }
+  .dropdown-list button.selected{ color:var(--steel-bright); }
+
+  /* --- slider --- */
+  .slider-head{ display:flex; justify-content:space-between; margin-bottom:7px; font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); }
+  .slider-head .val{ font-family:'Space Mono',monospace; font-weight:700; color:var(--steel-bright); }
+  .slider-track{ position:relative; height:6px; background:var(--line-dim); }
+  .slider-fill{ position:absolute; height:100%; background:var(--steel-blue); pointer-events:none; }
+  input[type="range"]{
+    position:absolute; inset:0; width:100%; height:6px; -webkit-appearance:none; appearance:none;
+    background:transparent; cursor:pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:16px; height:16px; background:var(--steel-bright);
+    border:2px solid var(--void); cursor:pointer; margin-top:0;
+  }
+  input[type="range"]::-moz-range-thumb{
+    width:16px; height:16px; background:var(--steel-bright); border:2px solid var(--void); cursor:pointer;
+  }
+
+  /* --- warzone grid --- */
+  .warzone-panel{ padding:22px; }
+  .system-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+  @media(min-width:640px){ .system-grid{ grid-template-columns:repeat(3,1fr); } }
+  .system-card{ border:1px solid; padding:14px; }
+  .system-card.owned{ border-color:rgba(95,201,255,.4); background:rgba(95,201,255,.08); }
+  .system-card.enemy{ border-color:rgba(209,72,63,.45); background:rgba(209,72,63,.1); }
+  .system-card.contested{ border-color:rgba(224,168,62,.4); background:rgba(224,168,62,.1); }
+  .system-top{ display:flex; align-items:center; justify-content:space-between; }
+  .system-name{ display:flex; align-items:center; gap:7px; font-size:15px; font-weight:700; color:var(--ink); }
+  .system-name svg{ color:var(--steel-bright); }
+  .progress{ height:6px; background:var(--line-dim); margin-top:11px; }
+  .progress-fill{ height:100%; background:var(--steel-blue); }
+  .progress-fill.danger{ background:var(--hostile); }
+  .system-pct{ margin-top:6px; font-size:11.5px; font-weight:600; color:var(--ink-dim); }
+  .empty-note{ grid-column:1/-1; text-align:center; padding:24px 0; font-size:15px; font-weight:600; color:var(--ink-dim); }
+
+  /* --- table --- */
+  .table-scroll{ overflow-x:auto; }
+  table{ width:100%; min-width:680px; border-collapse:collapse; text-align:left; font-size:14.5px; }
+  thead tr{ border-bottom:1px solid var(--line); }
+  th{ padding:13px 16px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); }
+  tbody tr{ border-bottom:1px solid var(--line-dim); transition:background .15s; }
+  tbody tr:hover{ background:rgba(95,201,255,.06); }
+  td{ padding:13px 16px; font-family:'Space Mono',monospace; font-weight:400; }
+  td.pilot{ font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--ink); }
+  td.dim{ color:var(--ink-dim); font-weight:600; }
+  td.isk{ color:var(--steel-bright); font-weight:700; }
+
+  /* --- roster --- */
+  .roster-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media(min-width:640px){ .roster-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media(min-width:1024px){ .roster-grid{ grid-template-columns:repeat(3,1fr); } }
+  .roster-card{ display:flex; align-items:center; gap:14px; padding:18px; }
+  .roster-icon{
+    width:46px; height:46px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    background:var(--panel-alt); color:var(--steel-bright);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  }
+  .roster-name-row{ display:flex; align-items:center; gap:8px; }
+  .roster-name{ font-size:16px; font-weight:700; color:var(--ink); }
+  .roster-rank{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--steel-bright); }
+  .roster-meta{ margin-top:3px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-dim); }
+  .dot{ position:relative; width:8px; height:8px; border-radius:50%; }
+  .dot.online{ background:var(--online); }
+  .dot.offline{ background:var(--line); }
+  .dot.online::after{
+    content:""; position:absolute; inset:0; border-radius:50%; background:var(--online);
+    opacity:.6; animation:ping 1.6s cubic-bezier(0,0,.2,1) infinite;
+  }
+  @keyframes ping{ 75%,100%{ transform:scale(2.2); opacity:0; } }
+
+  /* --- join section --- */
+  .join-grid{ display:grid; grid-template-columns:1fr; gap:40px; }
+  @media(min-width:1024px){ .join-grid{ grid-template-columns:2fr 3fr; } }
+  .join-list{ margin-top:26px; display:flex; flex-direction:column; gap:13px; font-size:15px; font-weight:600; color:var(--ink-dim); }
+  .join-list li{ display:flex; align-items:flex-start; gap:9px; }
+  .join-list svg{ color:var(--steel-bright); flex-shrink:0; margin-top:3px; }
+  .form-panel{ padding:26px; }
+  .form-row{ display:grid; grid-template-columns:1fr; gap:20px; margin-bottom:20px; }
+  @media(min-width:640px){ .form-row{ grid-template-columns:1fr 1fr; } }
+  .text-input, textarea{
+    width:100%; background:var(--panel-alt); border:1px solid var(--line); color:var(--ink); font-weight:600;
+    padding:10px 13px; font-size:15px; resize:none;
+  }
+  .text-input::placeholder, textarea::placeholder{ color:rgba(142,160,168,.7); font-weight:500; }
+  .checkbox-row{ display:flex; flex-wrap:wrap; gap:20px; margin:20px 0; }
+  .checkbox{ display:inline-flex; align-items:center; gap:9px; background:none; border:none; color:var(--ink); font-size:14.5px; font-weight:600; }
+  .checkbox .box{ width:17px; height:17px; border:1px solid var(--line); background:var(--panel-alt); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .checkbox.checked .box{ border-color:var(--steel-blue); background:var(--steel-blue); }
+  .checkbox .box svg{ display:none; color:var(--void); }
+  .checkbox.checked .box svg{ display:block; }
+
+  /* --- tooltip --- */
+  .tooltip{ position:relative; display:inline-flex; align-items:center; }
+  .tooltip .tip{
+    position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin-bottom:8px;
+    width:max-content; max-width:210px; background:var(--panel-alt); border:1px solid var(--line);
+    color:var(--ink); font-size:12px; font-weight:600; line-height:1.4; padding:7px 9px; opacity:0; pointer-events:none;
+    transition:opacity .15s; z-index:30;
+  }
+  .tooltip:hover .tip{ opacity:1; }
+
+  /* --- footer --- */
+  footer{ border-top:1px solid var(--line); padding:42px 20px; }
+  .footer-inner{ display:flex; flex-direction:column; gap:24px; align-items:flex-start; justify-content:space-between; }
+  @media(min-width:640px){ .footer-inner{ flex-direction:row; align-items:center; } }
+  .footer-brand p:first-child{ font-size:21px; font-weight:700; color:var(--ink); }
+  .footer-brand p:last-child{ margin-top:5px; font-size:13px; font-weight:600; color:var(--ink-dim); }
+  .footer-links{ display:flex; align-items:center; gap:22px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); }
+  .footer-links a{ display:flex; align-items:center; gap:4px; }
+  .footer-links a:hover{ color:var(--steel-bright); }
+
+  /* --- modal --- */
+  .modal-overlay{
+    display:none; position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.75);
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{ width:100%; max-width:390px; padding:30px; text-align:center; }
+  .modal-icon{
+    width:50px; height:50px; margin:0 auto 18px; display:flex; align-items:center; justify-content:center;
+    background:rgba(95,201,255,.14); color:var(--steel-bright);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  }
+  .modal-box h3{ font-size:24px; font-weight:700; color:var(--ink); }
+  .modal-box p{ margin-top:10px; font-size:15px; font-weight:500; color:var(--ink-dim); }
+  .modal-box .btn{ margin-top:26px; }
+</style>
+</head>
+<body>
+
+<!-- ================= HEADER ================= -->
+<header>
+  <div class="header-inner wrap">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      </div>
+      <div>
+        <p class="brand-name display">COLDSTEEL DIRECTIVE</p>
+        <p class="brand-tag mono">[CSD-1] · Caldari State Militia</p>
+      </div>
+    </div>
+
+    <nav class="desktop-nav">
+      <a href="#kpi">Resumen</a>
+      <a href="#warzone">Warzone</a>
+      <a href="#killboard">Killboard</a>
+      <a href="#roster">Roster</a>
+      <a href="#join">Unirse</a>
+    </nav>
+
+    <div class="header-cta">
+      <button class="btn btn-primary btn-sm">Unirse a la flota</button>
+    </div>
+
+    <button class="burger" id="burgerBtn" aria-label="Abrir menú">
+      <svg id="iconMenu" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+
+  <nav class="mobile-nav" id="mobileNav">
+    <a href="#kpi">Resumen</a>
+    <a href="#warzone">Warzone</a>
+    <a href="#killboard">Killboard</a>
+    <a href="#roster">Roster</a>
+    <a href="#join">Unirse</a>
+    <button class="btn btn-primary btn-block">Unirse a la flota</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ================= HERO ================= -->
+  <section class="hero">
+    <div class="hero-inner">
+      <span class="eyebrow">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
+        Warzone Black Rise — activo
+      </span>
+      <h1 class="display">No pedimos lealtad.<br><span class="accent">Exigimos resultados.</span></h1>
+      <p>Coldsteel Directive opera bajo protocolo del Estado Caldari en el warzone de Black Rise. Cada piloto es un activo. Cada sistema, un contrato cumplido o una pérdida que se reporta.</p>
+      <div class="hero-actions">
+        <button class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+          Unirse a la flota
+        </button>
+        <button class="btn btn-secondary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20l4-9 4 9M12 3v9"/></svg>
+          Ver killboard
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= KPIs ================= -->
+  <section class="block" id="kpi">
+    <div class="wrap">
+      <h2 class="section-title display">Registro de campaña <span class="accent">// en tiempo real</span></h2>
+      <div class="kpi-grid">
+        <div class="panel kpi-card">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20l4-9 4 9M12 3v9"/></svg>
+          <p class="kpi-value mono">4,812</p>
+          <p class="kpi-label">Bajas enemigas</p>
+          <p class="kpi-trend">+312 esta semana</p>
+        </div>
+        <div class="panel kpi-card">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <p class="kpi-value mono">1,203</p>
+          <p class="kpi-label">Pérdidas propias</p>
+          <p class="kpi-trend">-48 esta semana</p>
+        </div>
+        <div class="panel kpi-card">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+          <p class="kpi-value mono">892.4B</p>
+          <p class="kpi-label">ISK destruido</p>
+          <p class="kpi-trend">+21.6B esta semana</p>
+        </div>
+        <div class="panel kpi-card">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <p class="kpi-value mono">14 / 23</p>
+          <p class="kpi-label">Sistemas controlados</p>
+          <p class="kpi-trend">Warzone Black Rise</p>
+        </div>
+        <div class="panel kpi-card">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <p class="kpi-value mono">78%</p>
+          <p class="kpi-label">Ratio de victorias</p>
+          <p class="kpi-trend">Últimos 30 días</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= WARZONE ================= -->
+  <section class="block bordered" id="warzone">
+    <div class="wrap">
+      <div class="controls-row">
+        <div>
+          <h2 class="section-title display" style="margin-bottom:5px;">Mapa del warzone</h2>
+          <p class="sub">
+            Control de sistemas en disputa
+            <span class="tooltip">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--steel-blue); cursor:help;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span class="tip">El nivel de amenaza indica la intensidad de combate reportada en el sistema en las últimas 4 horas.</span>
+            </span>
+          </p>
+        </div>
+        <div class="controls-group">
+          <div class="field w-48">
+            <label class="field-label">Región</label>
+            <div class="dropdown" id="regionDropdown">
+              <button type="button" class="dropdown-btn" data-toggle="regionDropdown">
+                <span data-label>Todos los sistemas</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="dropdown-list">
+                <button type="button" class="selected" data-value="Todos los sistemas">Todos los sistemas</button>
+                <button type="button" data-value="Kurniainen">Kurniainen</button>
+                <button type="button" data-value="Vlillirier">Vlillirier</button>
+                <button type="button" data-value="Airaken">Airaken</button>
+                <button type="button" data-value="Ala">Ala</button>
+              </div>
+            </div>
+          </div>
+          <div class="field w-56">
+            <div class="slider-head">
+              <span>Amenaza mínima</span>
+              <span class="val mono" id="threatVal">55%</span>
+            </div>
+            <div class="slider-track">
+              <div class="slider-fill" id="threatFill" style="width:55%;"></div>
+              <input type="range" id="threatSlider" min="0" max="100" value="55">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel no-clip warzone-panel">
+        <div class="system-grid" id="systemGrid"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= KILLBOARD ================= -->
+  <section class="block" id="killboard">
+    <div class="wrap">
+      <h2 class="section-title display">Killboard reciente</h2>
+      <div class="panel no-clip table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Piloto</th><th>Nave</th><th>Sistema</th><th>Valor ISK</th><th>Hora</th><th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="pilot">Isamu Vherata</td><td class="dim">Ferox</td><td class="dim">Airaken</td><td class="isk">176.4M</td><td class="dim">hace 12 min</td><td><span class="badge kill">Baja</span></td></tr>
+            <tr><td class="pilot">Rina Kaalen</td><td class="dim">Merlin</td><td class="dim">Ala</td><td class="isk">5.8M</td><td class="dim">hace 34 min</td><td><span class="badge kill">Baja</span></td></tr>
+            <tr><td class="pilot">Toshiro Vantel</td><td class="dim">Caracal</td><td class="dim">Vlillirier</td><td class="isk">198.2M</td><td class="dim">hace 51 min</td><td><span class="badge loss">Pérdida</span></td></tr>
+            <tr><td class="pilot">Keiko Draus</td><td class="dim">Raven</td><td class="dim">Kurniainen</td><td class="isk">312.7M</td><td class="dim">hace 1 h</td><td><span class="badge kill">Baja</span></td></tr>
+            <tr><td class="pilot">Haruto Senn</td><td class="dim">Naga</td><td class="dim">Airaken</td><td class="isk">487.1M</td><td class="dim">hace 2 h</td><td><span class="badge kill">Baja</span></td></tr>
+            <tr><td class="pilot">Mika Corrus</td><td class="dim">Griffin</td><td class="dim">Ala</td><td class="isk">2.1M</td><td class="dim">hace 3 h</td><td><span class="badge loss">Pérdida</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROSTER ================= -->
+  <section class="block bordered" id="roster">
+    <div class="wrap">
+      <h2 class="section-title display">Roster de la flota</h2>
+      <div class="roster-grid">
+
+        <div class="panel roster-card">
+          <div class="roster-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div>
+            <div class="roster-name-row"><span class="roster-name">Isamu Vherata</span><span class="dot online"></span></div>
+            <p class="roster-rank">Director de Escuadra</p>
+            <p class="roster-meta">Ferox · En línea</p>
+          </div>
+        </div>
+
+        <div class="panel roster-card">
+          <div class="roster-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div>
+            <div class="roster-name-row"><span class="roster-name">Keiko Draus</span><span class="dot online"></span></div>
+            <p class="roster-rank">Oficial de Enlace</p>
+            <p class="roster-meta">Raven · En línea</p>
+          </div>
+        </div>
+
+        <div class="panel roster-card">
+          <div class="roster-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div>
+            <div class="roster-name-row"><span class="roster-name">Rina Kaalen</span><span class="dot offline"></span></div>
+            <p class="roster-rank">Piloto Certificado</p>
+            <p class="roster-meta">Merlin · Desconectado</p>
+          </div>
+        </div>
+
+        <div class="panel roster-card">
+          <div class="roster-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div>
+            <div class="roster-name-row"><span class="roster-name">Mika Corrus</span><span class="dot online"></span></div>
+            <p class="roster-rank">Soporte Logístico</p>
+            <p class="roster-meta">Griffin · En línea</p>
+          </div>
+        </div>
+
+        <div class="panel roster-card">
+          <div class="roster-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div>
+            <div class="roster-name-row"><span class="roster-name">Toshiro Vantel</span><span class="dot offline"></span></div>
+            <p class="roster-rank">Analista de Inteligencia</p>
+            <p class="roster-meta">Caracal · Desconectado</p>
+          </div>
+        </div>
+
+        <div class="panel roster-card">
+          <div class="roster-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div>
+            <div class="roster-name-row"><span class="roster-name">Haruto Senn</span><span class="dot online"></span></div>
+            <p class="roster-rank">Piloto Certificado</p>
+            <p class="roster-meta">Naga · En línea</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= JOIN ================= -->
+  <section class="block" id="join">
+    <div class="wrap join-grid">
+      <div>
+        <h2 class="section-title display" style="margin-bottom:0;">Cómo unirse</h2>
+        <p style="margin-top:14px; color:var(--ink-dim); font-size:15px; font-weight:500; line-height:1.5;">No evaluamos entusiasmo. Evaluamos disciplina, disponibilidad y capacidad de seguir protocolo bajo fuego.</p>
+        <ul class="join-list">
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Standing mínimo con el Estado Caldari</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Discord activo durante operaciones programadas</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Manejo de naves de doctrina de misiles/drones</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Reporte de bajas y pérdidas sin excepción</li>
+        </ul>
+      </div>
+
+      <div class="panel no-clip form-panel">
+        <form id="joinForm">
+          <div class="form-row">
+            <div class="field">
+              <label class="field-label">Nombre de personaje</label>
+              <input class="text-input" type="text" placeholder="ej. Isamu Vherata">
+            </div>
+            <div class="field">
+              <label class="field-label">Especialización preferida</label>
+              <div class="dropdown" id="roleDropdown">
+                <button type="button" class="dropdown-btn" data-toggle="roleDropdown">
+                  <span data-label>Artillero de línea</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="dropdown-list">
+                  <button type="button" class="selected" data-value="Artillero de línea">Artillero de línea</button>
+                  <button type="button" data-value="Soporte logístico">Soporte logístico</button>
+                  <button type="button" data-value="Guerra electrónica">Guerra electrónica</button>
+                  <button type="button" data-value="Comando de flota">Comando de flota</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-bottom:20px;">
+            <label class="field-label">Motivación</label>
+            <textarea rows="4" placeholder="Contanos por qué querés operar con Coldsteel Directive..."></textarea>
+          </div>
+
+          <div class="checkbox-row">
+            <button type="button" class="checkbox checked" data-toggle-check>
+              <span class="box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>
+              Zona horaria EU
+            </button>
+            <button type="button" class="checkbox" data-toggle-check>
+              <span class="box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>
+              Zona horaria US
+            </button>
+            <button type="button" class="checkbox checked" data-toggle-check>
+              <span class="box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>
+              Discord obligatorio, entendido
+            </button>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+            Enviar postulación
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= FOOTER ================= -->
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <p class="display">COLDSTEEL DIRECTIVE [CSD-1]</p>
+      <p>Afiliados a <span style="color:var(--steel-bright);">State Protectorate Coalition</span> · Warzone Black Rise</p>
+    </div>
+    <div class="footer-links">
+      <a href="#">Discord ↗</a>
+      <a href="#">zKillboard ↗</a>
+      <a href="#">Reddit ↗</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ================= MODAL ================= -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="panel no-clip modal-box" onclick="event.stopPropagation()">
+    <div class="modal-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+    <h3 class="display">Postulación enviada</h3>
+    <p>Un oficial de Coldsteel Directive revisará tu solicitud y te contactará por Discord en las próximas 24 horas.</p>
+    <button class="btn btn-primary btn-block" id="modalCloseBtn">Entendido</button>
+  </div>
+</div>
+
+<script>
+  /* ---------- mobile menu ---------- */
+  const burgerBtn = document.getElementById('burgerBtn');
+  const mobileNav = document.getElementById('mobileNav');
+  const iconMenu = document.getElementById('iconMenu');
+  burgerBtn.addEventListener('click', () => {
+    mobileNav.classList.toggle('open');
+    const isOpen = mobileNav.classList.contains('open');
+    iconMenu.innerHTML = isOpen
+      ? '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+      : '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>';
+  });
+
+  /* ---------- generic dropdown ---------- */
+  document.querySelectorAll('.dropdown').forEach((dd) => {
+    const btn = dd.querySelector('.dropdown-btn');
+    const list = dd.querySelector('.dropdown-list');
+    const label = btn.querySelector('[data-label]');
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.dropdown-list.open').forEach(l => { if (l !== list) l.classList.remove('open'); });
+      document.querySelectorAll('.dropdown-btn.open').forEach(b => { if (b !== btn) b.classList.remove('open'); });
+      list.classList.toggle('open');
+      btn.classList.toggle('open');
+    });
+
+    list.querySelectorAll('button').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        label.textContent = opt.dataset.value;
+        list.querySelectorAll('button').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        list.classList.remove('open');
+        btn.classList.remove('open');
+        if (dd.id === 'regionDropdown') renderSystems();
+      });
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.dropdown-list.open').forEach(l => l.classList.remove('open'));
+    document.querySelectorAll('.dropdown-btn.open').forEach(b => b.classList.remove('open'));
+  });
+
+  /* ---------- checkboxes ---------- */
+  document.querySelectorAll('[data-toggle-check]').forEach((cb) => {
+    cb.addEventListener('click', () => cb.classList.toggle('checked'));
+  });
+
+  /* ---------- threat slider ---------- */
+  const threatSlider = document.getElementById('threatSlider');
+  const threatFill = document.getElementById('threatFill');
+  const threatVal = document.getElementById('threatVal');
+  threatSlider.addEventListener('input', () => {
+    threatFill.style.width = threatSlider.value + '%';
+    threatVal.textContent = threatSlider.value + '%';
+    renderSystems();
+  });
+
+  /* ---------- warzone systems ---------- */
+  const SYSTEMS = [
+    { name: 'Kurniainen', status: 'owned', contest: 12 },
+    { name: 'Nourvukaiken', status: 'owned', contest: 4 },
+    { name: 'Vlillirier', status: 'contested', contest: 61 },
+    { name: 'Uitra', status: 'owned', contest: 28 },
+    { name: 'Airaken', status: 'enemy', contest: 84 },
+    { name: 'Ala', status: 'contested', contest: 55 },
+    { name: 'Sirppala', status: 'owned', contest: 9 },
+    { name: 'New Caldari', status: 'enemy', contest: 71 },
+    { name: 'Wompali', status: 'owned', contest: 33 },
+  ];
+  const STATUS_LABEL = { owned: 'Propio', enemy: 'Hostil', contested: 'Disputado' };
+  const STATUS_BADGE = { owned: 'allied', enemy: 'hostile', contested: 'neutral' };
+
+  function renderSystems() {
+    const grid = document.getElementById('systemGrid');
+    const threat = Number(threatSlider.value);
+    const region = document.querySelector('#regionDropdown [data-label]').textContent;
+
+    const filtered = SYSTEMS.filter(s =>
+      s.contest >= threat - 100 &&
+      (region === 'Todos los sistemas' || s.name === region)
+    );
+
+    grid.innerHTML = '';
+    if (filtered.length === 0) {
+      grid.innerHTML = '<p class="empty-note">Ningún sistema coincide con los filtros actuales.</p>';
+      return;
+    }
+
+    filtered.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'system-card ' + s.status;
+      card.innerHTML = `
+        <div class="system-top">
+          <span class="system-name">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            ${s.name}
+          </span>
+          <span class="badge ${STATUS_BADGE[s.status]}">${STATUS_LABEL[s.status]}</span>
+        </div>
+        <div class="progress"><div class="progress-fill ${s.contest > 60 ? 'danger' : ''}" style="width:${s.contest}%;"></div></div>
+        <p class="system-pct">Nivel de amenaza: ${s.contest}%</p>
+      `;
+      grid.appendChild(card);
+    });
+  }
+  renderSystems();
+
+  /* ---------- modal ---------- */
+  const modalOverlay = document.getElementById('modalOverlay');
+  document.getElementById('joinForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    modalOverlay.classList.add('open');
+  });
+  document.getElementById('modalCloseBtn').addEventListener('click', () => modalOverlay.classList.remove('open'));
+  modalOverlay.addEventListener('click', () => modalOverlay.classList.remove('open'));
+</script>
+
+</body>
+</html>
