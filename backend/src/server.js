@@ -5,6 +5,9 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
+const systemRoutes = require('./routes/systems');
+const routeRoutes = require('./routes/routes');
+const { loadSystems } = require('./data/systems');
 
 const app = express();
 
@@ -24,6 +27,8 @@ app.use('/auth', limiter);
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.use('/auth', authRoutes);
+app.use('/api/systems', systemRoutes);
+app.use('/api/routes', routeRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -31,6 +36,12 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Titanium Tracker API escuchando en puerto ${PORT}`);
-});
+
+async function start() {
+  await loadSystems();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Titanium Tracker API escuchando en puerto ${PORT}`);
+  });
+}
+
+start();

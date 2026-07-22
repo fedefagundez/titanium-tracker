@@ -1,5 +1,5 @@
 <template>
-  <div class="home-shell">
+  <div class="app-shell">
     <header class="app-header">
       <div class="header-inner wrap">
         <div class="brand">
@@ -25,27 +25,34 @@
       </div>
     </header>
 
-    <main class="home-content wrap">
-      <div class="welcome-panel panel no-clip">
-        <h1 class="display welcome-title">Bienvenido, {{ roleLabel }} {{ user?.characterName }}</h1>
-        <p class="welcome-sub">Conectado como {{ roleLabel }} de {{ user?.corporationId ? 'Titanium State Logistics' : 'tu corporación' }}</p>
-        <div class="divider" style="margin: 24px 0;"></div>
-        <p class="welcome-info">El tracker de rutas y alertas está en desarrollo. Próximamente podrás planificar rutas, recibir alertas de peligro y compartir con tu flota.</p>
-      </div>
-    </main>
+    <div class="app-body" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+      <RouteSidebar
+        v-model:collapsed="sidebarCollapsed"
+        @route-calculated="onRouteCalculated"
+      />
+      <MainContent :model-route="routeResult" />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authState, logout } from '../auth'
-
-const ROLE_LABELS = { admin: 'Director', officer: 'Oficial', member: 'Miembro' }
+import { ROLE_LABELS } from '../constants'
+import RouteSidebar from '../components/RouteSidebar.vue'
+import MainContent from '../components/MainContent.vue'
 
 const router = useRouter()
 const user = computed(() => authState.user)
 const roleLabel = computed(() => ROLE_LABELS[user.value?.role] || 'Miembro')
+
+const sidebarCollapsed = ref(false)
+const routeResult = ref(null)
+
+function onRouteCalculated(route) {
+  routeResult.value = route
+}
 
 function handleLogout() {
   logout()
@@ -54,7 +61,9 @@ function handleLogout() {
 </script>
 
 <style scoped>
-.home-shell {
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
   min-height: 100vh;
 }
 
@@ -159,31 +168,39 @@ function handleLogout() {
   color: var(--online);
 }
 
-.home-content {
-  padding-top: 100px;
+.app-body {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  margin-top: 70px;
+  height: calc(100vh - 70px);
+  overflow: hidden;
+  transition: grid-template-columns 0.25s ease;
 }
 
-.welcome-panel {
-  max-width: 640px;
-  padding: 36px;
+.app-body.sidebar-collapsed {
+  grid-template-columns: 48px 1fr;
 }
 
-.welcome-title {
-  font-size: 28px;
-  color: var(--ink);
+@media (max-width: 1023px) {
+  .app-body {
+    grid-template-columns: 48px 1fr;
+  }
+
+  .app-body.sidebar-collapsed {
+    grid-template-columns: 48px 1fr;
+  }
 }
 
-.welcome-sub {
-  margin-top: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ink-dim);
-}
+@media (max-width: 767px) {
+  .app-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+    height: auto;
+    min-height: calc(100vh - 70px);
+  }
 
-.welcome-info {
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.55;
-  color: var(--ink-dim);
+  .app-body.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

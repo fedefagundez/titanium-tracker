@@ -189,3 +189,31 @@ input, textarea {
   border-color: rgba(224, 168, 62, 0.4);
   background: rgba(224, 168, 62, 0.1);
 }
+
+.sec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sec-dot.highsec {
+  background: var(--steel-bright);
+}
+
+.sec-dot.lowsec {
+  background: var(--contested);
+}
+
+.sec-dot.nullsec {
+  background: var(--hostile);
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  margin-bottom: 4px;
+}
