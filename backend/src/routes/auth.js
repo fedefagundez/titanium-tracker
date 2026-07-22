@@ -63,7 +63,7 @@ router.get('/eve/callback', async (req, res) => {
       }).toString(),
     });
     const tokenData = await tokenResp.json();
-    const { access_token } = tokenData;
+    const { access_token, refresh_token, expires_in } = tokenData;
 
     const verifyResp = await fetch(EVE_VERIFY_URL, {
       headers: { Authorization: `Bearer ${access_token}` },
@@ -107,18 +107,19 @@ router.get('/eve/callback', async (req, res) => {
     let user;
     if (existing.rows.length === 0) {
       const insert = await pool.query(
-        `INSERT INTO users (eve_character_id, character_name, corporation_id, corporation_name, role, avatar_url, last_login)
-         VALUES ($1,$2,$3,$4,$5,$6, now()) RETURNING *`,
-        [eveCharacterId, characterName, corporationId, corporationName, detectedRole, `https://images.evetech.net/characters/${eveCharacterId}/portrait?size=128`]
+        `INSERT INTO users (eve_character_id, character_name, corporation_id, corporation_name, role, avatar_url, last_login, eve_access_token, eve_refresh_token, token_expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now(), $7, $8, NOW() + INTERVAL '${expires_in} seconds') RETURNING *`,
+        [eveCharacterId, characterName, corporationId, corporationName, detectedRole, `https://images.evetech.net/characters/${eveCharacterId}/portrait?size=128`, access_token, refresh_token]
       );
       user = insert.rows[0];
     } else {
       const currentRole = existing.rows[0].role;
       const newRole = currentRole === 'member' ? detectedRole : currentRole;
       const update = await pool.query(
-        `UPDATE users SET character_name=$1, corporation_id=$2, corporation_name=$3, role=$4, last_login=now()
-         WHERE eve_character_id=$5 RETURNING *`,
-        [characterName, corporationId, corporationName, newRole, eveCharacterId]
+        `UPDATE users SET character_name=$1, corporation_id=$2, corporation_name=$3, role=$4, last_login=now(),
+         eve_access_token=$5, eve_refresh_token=$6, token_expires_at=NOW() + INTERVAL '${expires_in} seconds'
+         WHERE eve_character_id=$7 RETURNING *`,
+        [characterName, corporationId, corporationName, newRole, access_token, refresh_token, eveCharacterId]
       );
       user = update.rows[0];
     }

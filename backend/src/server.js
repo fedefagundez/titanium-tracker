@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const systemRoutes = require('./routes/systems');
 const routeRoutes = require('./routes/routes');
 const threatRoutes = require('./routes/threats');
+const locationRoutes = require('./routes/location');
 const { loadSystems } = require('./data/systems');
 
 const app = express();
@@ -31,6 +32,7 @@ app.use('/auth', authRoutes);
 app.use('/api/systems', systemRoutes);
 app.use('/api/routes', routeRoutes);
 app.use('/api/systems', threatRoutes);
+app.use('/api', locationRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

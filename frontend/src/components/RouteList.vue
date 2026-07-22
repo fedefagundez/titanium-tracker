@@ -11,6 +11,17 @@
       <p class="threat-endpoints mono">{{ route.origin.name }} → {{ route.destination.name }}</p>
     </div>
 
+    <div class="progress-section" v-if="currentSystemIndex >= 0">
+      <div class="progress-bar">
+        <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+      </div>
+      <div class="progress-info">
+        <span class="progress-text">{{ currentSystemIndex }}/{{ route.route.length - 1 }} sistemas</span>
+        <span class="progress-percent">{{ progressPercent }}%</span>
+        <span v-if="estimatedMinutes > 0" class="progress-time">~{{ estimatedMinutes }} min restantes</span>
+      </div>
+    </div>
+
     <div class="divider" style="margin: 16px 0;"></div>
 
     <table class="threat-table">
@@ -19,8 +30,10 @@
           <th class="col-num">#</th>
           <th class="col-region">Región</th>
           <th class="col-system">Sistema / Sec</th>
+          <th class="col-pos">Pos</th>
           <th class="col-kills">Kills (1h)</th>
           <th class="col-info">Info</th>
+          <th class="col-score">Riesgo</th>
           <th class="col-links">Links</th>
         </tr>
       </thead>
@@ -28,14 +41,20 @@
         <tr
           v-for="(sys, i) in route.route"
           :key="sys.id"
-          :class="rowClass(sys)"
+          :class="rowClass(sys, i)"
         >
           <td class="cell-num">{{ i }}</td>
           <td class="cell-region">{{ sys.region_name }}</td>
           <td class="cell-system">
             <span class="sec-dot" :class="sys.security_level"></span>
             <span class="sys-name">{{ sys.name }}</span>
-            <span class="sys-sec mono">{{ formatSec(sys.security_status) }}</span>
+            <span class="sys-sec mono">{{ sys.security_status.toFixed(1) }}</span>
+          </td>
+          <td class="cell-pos">
+            <span v-if="currentSystemId === sys.id" class="pos-indicator">
+              <span class="pos-dot"></span>
+            </span>
+            <span v-else-if="i < currentSystemIndex" class="pos-visited">✓</span>
           </td>
           <td class="cell-kills">
             <span v-if="!loadingThreats && threats[sys.id]" class="kills-count" :class="'threat-' + (threats[sys.id]?.threat_level || 'safe')">
@@ -46,6 +65,11 @@
           <td class="cell-info">
             <span v-if="!loadingThreats && threats[sys.id]" class="info-text" :class="'threat-' + (threats[sys.id]?.threat_level || 'safe')">
               {{ infoText(threats[sys.id]) }}
+            </span>
+          </td>
+          <td class="cell-score">
+            <span v-if="!loadingThreats && threats[sys.id]" class="score-badge" :class="'score-' + (threats[sys.id]?.threat_level || 'safe')">
+              {{ riskScore(threats[sys.id]) }}
             </span>
           </td>
           <td class="cell-links">
@@ -60,32 +84,52 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { FLAG_LABELS } from '../constants'
-import { getThreats } from '../api'
+import { getThreats, getCharacterLocation } from '../api'
 
 const props = defineProps({
   route: { type: Object, required: true },
 })
 
 const FLAG_CLASSES = { secure: 'allied', shortest: 'neutral', insecure: 'hostile' }
+const JUMP_TIME_MINUTES = 5
 
 const threats = ref({})
 const loadingThreats = ref(false)
+const currentSystemId = ref(null)
+let locationInterval = null
 
 const flagLabel = computed(() => FLAG_LABELS[props.route.flag] || props.route.flag)
 const flagClass = computed(() => FLAG_CLASSES[props.route.flag] || 'neutral')
 
-function formatSec(val) {
-  return val.toFixed(1)
+const currentSystemIndex = computed(() => {
+  if (!currentSystemId.value) return -1
+  return props.route.route.findIndex((s) => s.id === currentSystemId.value)
+})
+
+const progressPercent = computed(() => {
+  if (currentSystemIndex.value < 0) return 0
+  return Math.round((currentSystemIndex.value / (props.route.route.length - 1)) * 100)
+})
+
+const estimatedMinutes = computed(() => {
+  if (currentSystemIndex.value < 0) return 0
+  const remaining = props.route.route.length - 1 - currentSystemIndex.value
+  return remaining * JUMP_TIME_MINUTES
+})
+
+function riskScore(threat) {
+  if (!threat) return '-'
+  if (threat.threat_level === 'safe') return '0'
+  if (threat.threat_level === 'warning') return '50'
+  return '100'
 }
 
 function infoText(threat) {
   if (!threat) return ''
+  if (threat.threat_level === 'safe') return 'Sin actividad en puertas'
   const parts = []
-  if (threat.threat_level === 'safe') {
-    return 'Sin actividad en puertas'
-  }
   if (threat.kill_count > 0) {
     parts.push(`${threat.kill_count} kill${threat.kill_count > 1 ? 's' : ''} en puertas`)
   }
@@ -95,10 +139,15 @@ function infoText(threat) {
   return parts.join(' · ')
 }
 
-function rowClass(sys) {
+function rowClass(sys, i) {
   const t = threats.value[sys.id]
-  if (!t || loadingThreats.value) return {}
-  return { ['row-' + t.threat_level]: true }
+  const classes = {}
+  if (currentSystemId.value === sys.id) classes['row-current'] = true
+  else if (i < currentSystemIndex.value) classes['row-visited'] = true
+  if (t && !loadingThreats.value) {
+    classes['row-' + t.threat_level] = true
+  }
+  return classes
 }
 
 async function fetchThreats() {
@@ -115,7 +164,26 @@ async function fetchThreats() {
   }
 }
 
-onMounted(fetchThreats)
+async function fetchLocation() {
+  try {
+    const data = await getCharacterLocation()
+    currentSystemId.value = data.solar_system_id
+  } catch (err) {
+    console.warn('[RouteList] No se pudo obtener ubicación:', err.message)
+    currentSystemId.value = null
+  }
+}
+
+onMounted(() => {
+  fetchThreats()
+  fetchLocation()
+  locationInterval = setInterval(fetchLocation, 30000)
+})
+
+onUnmounted(() => {
+  if (locationInterval) clearInterval(locationInterval)
+})
+
 watch(() => props.route, fetchThreats)
 </script>
 
@@ -169,6 +237,49 @@ watch(() => props.route, fetchThreats)
   color: var(--ink-dim);
 }
 
+/* Progress */
+.progress-section {
+  margin-top: 16px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--line-dim);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--steel-blue);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.progress-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.progress-text {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.progress-percent {
+  color: var(--steel-bright);
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+}
+
+.progress-time {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
 /* Table */
 .threat-table {
   width: 100%;
@@ -183,27 +294,27 @@ watch(() => props.route, fetchThreats)
   letter-spacing: 0.08em;
   color: var(--ink-dim);
   text-align: left;
-  padding: 10px 12px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 
 .threat-table td {
-  padding: 10px 12px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--line-dim);
   vertical-align: middle;
 }
 
-.col-num { width: 36px; }
-.col-region { width: 130px; }
-.col-kills { width: 70px; text-align: center; }
-.col-info { min-width: 180px; }
-.col-links { width: 110px; }
+.col-num { width: 30px; }
+.col-region { width: 110px; }
+.col-pos { width: 36px; text-align: center; }
+.col-kills { width: 60px; text-align: center; }
+.col-info { min-width: 160px; }
+.col-score { width: 50px; text-align: center; }
+.col-links { width: 100px; }
 
 /* Row states */
-.row-safe td {
-  background: transparent;
-}
+.row-safe td { background: transparent; }
 
 .row-warning td {
   background: rgba(224, 168, 62, 0.06);
@@ -218,12 +329,16 @@ watch(() => props.route, fetchThreats)
   border-left: 3px solid;
 }
 
-.row-warning td:first-child {
-  border-left-color: var(--contested);
+.row-warning td:first-child { border-left-color: var(--contested); }
+.row-danger td:first-child { border-left-color: var(--hostile); }
+
+.row-current td {
+  background: rgba(58, 143, 199, 0.1) !important;
+  border-left: 3px solid var(--steel-blue) !important;
 }
 
-.row-danger td:first-child {
-  border-left-color: var(--hostile);
+.row-visited td {
+  opacity: 0.5;
 }
 
 /* Cell styles */
@@ -254,9 +369,38 @@ watch(() => props.route, fetchThreats)
   color: var(--ink-dim);
 }
 
-.cell-kills {
+/* Position */
+.cell-pos {
   text-align: center;
 }
+
+.pos-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--steel-bright);
+  animation: posPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes posPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+.pos-visited {
+  color: var(--online);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Kills */
+.cell-kills { text-align: center; }
 
 .kills-count {
   font-family: 'Space Mono', monospace;
@@ -264,44 +408,50 @@ watch(() => props.route, fetchThreats)
   font-weight: 700;
 }
 
-.kills-count.threat-safe {
-  color: var(--ink-dim);
-}
+.kills-count.threat-safe { color: var(--ink-dim); }
+.kills-count.threat-warning { color: var(--contested); }
+.kills-count.threat-danger { color: var(--hostile); }
 
-.kills-count.threat-warning {
-  color: var(--contested);
-}
-
-.kills-count.threat-danger {
-  color: var(--hostile);
-}
-
-.kills-loading {
-  color: var(--ink-dim);
-  font-size: 12px;
-}
+.kills-loading { color: var(--ink-dim); font-size: 12px; }
 
 .info-text {
   font-size: 13px;
   font-weight: 600;
 }
 
-.info-text.threat-safe {
+.info-text.threat-safe { color: var(--online); }
+.info-text.threat-warning { color: var(--contested); }
+.info-text.threat-danger { color: var(--hostile); }
+
+/* Score */
+.cell-score { text-align: center; }
+
+.score-badge {
+  display: inline-block;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.score-badge.score-safe {
   color: var(--online);
+  background: rgba(61, 220, 151, 0.12);
 }
 
-.info-text.threat-warning {
+.score-badge.score-warning {
   color: var(--contested);
+  background: rgba(224, 168, 62, 0.15);
 }
 
-.info-text.threat-danger {
+.score-badge.score-danger {
   color: var(--hostile);
+  background: rgba(209, 72, 63, 0.15);
 }
 
 /* Links */
-.cell-links {
-  white-space: nowrap;
-}
+.cell-links { white-space: nowrap; }
 
 .link-zkb,
 .link-dotlan {
@@ -312,9 +462,7 @@ watch(() => props.route, fetchThreats)
 }
 
 .link-zkb:hover,
-.link-dotlan:hover {
-  text-decoration: underline;
-}
+.link-dotlan:hover { text-decoration: underline; }
 
 .link-sep {
   color: var(--ink-dim);

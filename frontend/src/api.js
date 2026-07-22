@@ -1,4 +1,5 @@
 import { API_URL } from './constants';
+import { getToken } from './auth';
 
 export async function searchSystems(query) {
   const resp = await fetch(`${API_URL}/api/systems/search?q=${encodeURIComponent(query)}`);
@@ -26,5 +27,15 @@ export async function getThreats(systemIds) {
     body: JSON.stringify({ system_ids: systemIds }),
   });
   if (!resp.ok) throw new Error('Error obteniendo amenazas');
+  return resp.json();
+}
+
+export async function getCharacterLocation() {
+  const token = getToken();
+  if (!token) throw new Error('No hay sesión');
+  const resp = await fetch(`${API_URL}/api/location`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) throw new Error('Error obteniendo ubicación');
   return resp.json();
 }
