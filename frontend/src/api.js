@@ -18,3 +18,13 @@ export async function calculateRoute({ origin_id, destination_id, flag, avoid_id
   }
   return resp.json();
 }
+
+export async function getThreats(systemIds) {
+  const resp = await fetch(`${API_URL}/api/systems/threats`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system_ids: systemIds }),
+  });
+  if (!resp.ok) throw new Error('Error obteniendo amenazas');
+  return resp.json();
+}

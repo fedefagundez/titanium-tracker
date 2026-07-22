@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
 const systemRoutes = require('./routes/systems');
 const routeRoutes = require('./routes/routes');
+const threatRoutes = require('./routes/threats');
 const { loadSystems } = require('./data/systems');
 
 const app = express();
@@ -29,6 +30,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/auth', authRoutes);
 app.use('/api/systems', systemRoutes);
 app.use('/api/routes', routeRoutes);
+app.use('/api/systems', threatRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

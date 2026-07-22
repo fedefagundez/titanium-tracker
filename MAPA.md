@@ -25,18 +25,21 @@ titanium-tracker/
 │   ├── .env                        # Variables de entorno (⚠ contiene secrets)
 │   ├── .env.example                # Template de variables de entorno
 │   ├── package.json                # Express 4, pg, jsonwebtoken, cors, helmet, csv-parse
+│   ├── .cache/                     # CSVs descargados de Fuzzwork (gitignored)
 │   └── src/
-│       ├── server.js               # Entry point. Helmet, CORS, rate-limit, carga de sistemas
+│       ├── server.js               # Entry point. Helmet, CORS, rate-limit, carga de datos
 │       ├── db.js                   # Pool de conexión a PostgreSQL (DATABASE_URL)
 │       ├── migrate.js              # Ejecuta migraciones SQL desde src/migrations/
 │       ├── data/
-│       │   └── systems.js          # Carga CSV de Fuzzwork, lookup table, búsqueda
+│       │   ├── systems.js          # Carga CSVs de Fuzzwork, lookup table, búsqueda, regiones
+│       │   └── threats.js          # Detección de amenazas vía zKillboard API
 │       ├── middleware/
 │       │   └── auth.js             # requireAuth (JWT HS256) + requireRole(...roles)
 │       ├── routes/
 │       │   ├── auth.js             # /auth/eve/login, /auth/eve/callback, /auth/me, /auth/logout
 │       │   ├── systems.js          # GET /api/systems/search?q= — autocompletado
-│       │   └── routes.js           # POST /api/routes/calculate — cálculo vía ESI
+│       │   ├── routes.js           # POST /api/routes/calculate — cálculo vía ESI
+│       │   └── threats.js          # POST /api/systems/threats — amenazas por sistemas
 │       └── migrations/
 │           └── 001_create_users.sql  # CREATE TABLE users
 │
@@ -51,7 +54,7 @@ titanium-tracker/
 │       ├── App.vue                 # <router-view />
 │       ├── style.css               # Variables CSS + utilidades globales
 │       ├── constants.js            # API_URL, ROLE_LABELS, FLAG_OPTIONS
-│       ├── api.js                  # Cliente HTTP: searchSystems(), calculateRoute()
+│       ├── api.js                  # Cliente HTTP: searchSystems(), calculateRoute(), getThreats()
 │       ├── auth.js                 # State de sesión, loadSession(), getToken()
 │       ├── router.js               # Rutas: / (home, auth), /login (guest), /error (guest)
 │       ├── assets/
@@ -64,9 +67,9 @@ titanium-tracker/
 │           ├── SystemAutocomplete.vue  # Input con dropdown, debounce, dots de seguridad
 │           ├── RoutePlanner.vue        # Form: origen, destino, evitar, tipo de ruta
 │           ├── RouteSidebar.vue        # Sidebar colapsable que contiene el planner
-│           ├── MainContent.vue         # Panel derecho: toolbar + viewport (lista/mapa)
-│           ├── ViewToggle.vue          # Toggle Lista/Mapa
-│           ├── RouteList.vue           # Lista ordinal de sistemas de la ruta
+│           ├── MainContent.vue         # Panel derecho: toolbar + viewport (ruta/amenazas/mapa)
+│           ├── ViewToggle.vue          # Toggle Ruta/Mapa
+│           ├── RouteList.vue           # Tabla estilo Gatecamp Check con amenazas
 │           └── RouteMap.vue            # Placeholder para futuro mapa
 │
 └── eve_fw_corp.html                # Prototipo de referencia visual (Coldsteel Directive)
@@ -80,10 +83,12 @@ titanium-tracker/
 
 ```
 server.js
-├── data/systems.js      ← Model: carga datos, lookup, búsqueda
+├── data/systems.js      ← Model: carga datos, lookup, búsqueda, regiones
+├── data/threats.js      ← Model: detección de amenazas vía zKillboard
 ├── routes/auth.js       ← Controller: autenticación EVE SSO
 ├── routes/systems.js    ← Controller: búsqueda de sistemas
 ├── routes/routes.js     ← Controller: cálculo de rutas vía ESI
+├── routes/threats.js    ← Controller: amenazas por sistemas
 └── middleware/auth.js    ← Middleware: JWT + roles
 ```
 
@@ -96,8 +101,8 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 │   ├── RouteSidebar     ← Sidebar colapsable (380px / 48px)
 │   │   └── RoutePlanner ← Form de planificación
 │   └── MainContent      ← Panel derecho
-│       ├── ViewToggle   ← Toggle Lista/Mapa
-│       ├── RouteList    ← Lista ordinal de sistemas
+│       ├── ViewToggle   ← Toggle Ruta/Mapa
+│       ├── RouteList    ← Tabla de amenazas estilo Gatecamp Check
 │       └── RouteMap     ← Placeholder para mapa
 ```
 
@@ -138,9 +143,29 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 5. Backend valida IDs contra lookup table
 6. Backend llama ESI → GET /v1/route/{origin}/{destination}/?flag=...&avoid=...
 7. ESI retorna array de system IDs
-8. Backend resuelve IDs a nombres desde lookup table
+8. Backend resuelve IDs a nombres desde lookup table (incluye region_name)
 9. RoutePlanner emite 'route-calculated' con el resultado
-10. HomeView actualiza routeResult → MainContent muestra lista/mapa
+10. HomeView actualiza routeResult → MainContent muestra tabla de amenazas
+```
+
+---
+
+## Flujo de detección de amenazas
+
+```
+1. RouteList recibe route como prop
+2. OnMounted → fetchThreats() llama POST /api/systems/threats
+3. Backend recibe array de system IDs
+4. Para cada sistema → fetchKillsForSystem() llama zKillboard API
+   - Endpoint: /api/kills/solarSystemID/{id}/pastSeconds/3600/
+   - Ventana: última hora (3600 segundos)
+5. analyzeKills() filtra kills en stargates (locationID empieza con 500)
+6. Para cada kill en gate:
+   - classifyAttackers(): verifica ship_type_id contra interdictors (22456-22466)
+   - classifyWeapon(): verifica weapon_type_id contra smartbombs (3419-3666)
+7. Calcula threat_level: safe / warning (1-2 kills) / danger (3+ o amenazas especiales)
+8. Cache: resultados cacheados 60 segundos en memoria
+9. Frontend renderiza tabla: #, Región, Sistema/Sec, Kills, Info, Links
 ```
 
 ---
@@ -181,6 +206,7 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 | POST | `/auth/logout` | Cerrar sesión |
 | GET | `/api/systems/search?q=jita` | Buscar sistemas por nombre |
 | POST | `/api/routes/calculate` | Calcular ruta entre sistemas |
+| POST | `/api/systems/threats` | Obtener amenazas por sistemas (zKillboard) |
 
 ---
 
@@ -191,15 +217,15 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 │  HEADER (fijo, 70px)                                     │
 ├──────────────┬───────────────────────────────────────────┤
 │  SIDEBAR     │  MAIN CONTENT                             │
-│  (380px)     │                                           │
-│              │  Toolbar: [Lista] [Mapa]                   │
-│  Planificar  ├───────────────────────────────────────────┤
+│  (380px)     │  Toolbar: [Ruta] [Mapa]                   │
+│              ├───────────────────────────────────────────┤
+│  Planificar  │  Tabla de amenazas (estilo Gatecamp Check)│
 │  Ruta        │                                           │
-│              │  RouteList  ó  RouteMap                    │
-│  [Origen]    │                                           │
-│  [Destino]   │                                           │
-│  [Evitar]    │                                           │
-│  [Tipo]      │                                           │
+│              │  #  Region  Sistema/Sec  Kills  Info  Links│
+│  [Origen]    │  0  Forge   Jita 0.9     -     ✓    zKb·D│
+│  [Destino]   │  1  Forge   Perm 0.9     -     ✓    zKb·D│
+│  [Evitar]    │  2  Heimat  Amam 0.4     2     ⚠    zKb·D│
+│  [Tipo]      │  3  Citadel Tama 0.3    33     🔴    zKb·D│
 │  [Calcular]  │                                           │
 ├──────────────┴───────────────────────────────────────────┤
 ```
@@ -208,6 +234,24 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 - >= 1024px: Split completo (380px + fluido)
 - 768-1023px: Sidebar colapsado (48px rail)
 - < 768px: Sidebar como bottom sheet
+
+---
+
+## Tabla de amenazas (estilo Gatecamp Check)
+
+| Columna | Contenido |
+|---|---|
+| # | Número de orden en la ruta |
+| Región | Nombre de la región (The Forge, Heimatar, etc.) |
+| Sistema / Sec | Dot de seguridad + nombre + valor numérico |
+| Kills (1h) | Kills en stargates en la última hora |
+| Info | Texto descriptivo del nivel de amenaza |
+| Links | zKillboard y Dotlan (abren en nueva pestaña) |
+
+**Niveles de amenaza:**
+- `safe` → 0 kills, fondo normal, checkmark verde
+- `warning` → 1-2 kills, borde amarillo, fondo sutil amarillo
+- `danger` → 3+ kills o dictors/hictors/smartbombs, borde rojo
 
 ---
 
@@ -239,10 +283,21 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 | 1.2 | Selección de origen, destino y sistemas a evitar | ✅ |
 | 1.3 | Selección de tipo de ruta (segura, cartografía, no segura) | ✅ |
 | 1.4 | Cálculo de ruta óptima según tipo seleccionado | ✅ |
-| 1.5 | Advertencias por sistema (kills, interdictors, smartbombs) | ⏳ |
+| 1.5 | Advertencias por sistema (kills, interdictors, smartbombs) | ✅ |
 | 1.6 | Sugerencia de rutas alternativas | ⏳ |
 
 ### Fase 2-6 — Ver guia-proyecto.md
+
+---
+
+## Fuentes de datos
+
+| Fuente | Uso | Frecuencia de actualización |
+|---|---|---|
+| Fuzzwork mapSolarSystems.csv | Nombres de sistemas, regiones, seguridad | Diaria (expires 11:05 UTC) |
+| Fuzzwork mapRegions.csv | Nombres de regiones | Diaria |
+| CCP ESI /route/ | Cálculo de rutas | Cache 24h |
+| zKillboard API | Kills recientes para detección de amenazas | Real-time (cache 60s) |
 
 ---
 
