@@ -9,6 +9,7 @@ const systemRoutes = require('./routes/systems');
 const routeRoutes = require('./routes/routes');
 const threatRoutes = require('./routes/threats');
 const locationRoutes = require('./routes/location');
+const mapRoutes = require('./routes/map');
 const { loadSystems } = require('./data/systems');
 const { loadGates } = require('./data/gates');
 
@@ -34,6 +35,7 @@ app.use('/api/systems', systemRoutes);
 app.use('/api/routes', routeRoutes);
 app.use('/api/systems', threatRoutes);
 app.use('/api', locationRoutes);
+app.use('/api/map', mapRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

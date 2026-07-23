@@ -70,9 +70,9 @@ function getNames(ids) {
   return ids.map((id) => {
     const s = systems[String(id)];
     return s
-      ? { id: s.id, name: s.name, region_name: s.region_name, security_status: s.security_status, security_level: s.security_level }
-      : { id, name: `Unknown (${id})`, region_name: 'Unknown', security_status: 0, security_level: 'unknown' };
+      ? { id: s.id, name: s.name, region_name: s.region_name, security_status: s.security_status, security_level: s.security_level, x: s.x, y: s.y, z: s.z }
+      : { id, name: `Unknown (${id})`, region_name: 'Unknown', security_status: 0, security_level: 'unknown', x: 0, y: 0, z: 0 };
   });
 }
 
-module.exports = { loadSystems, search, getById, getNames };
+module.exports = { loadSystems, search, getById, getNames, getSystems: () => systems, getRegions: () => regions };

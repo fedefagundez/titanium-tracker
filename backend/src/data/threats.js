@@ -13,6 +13,32 @@ const SMARTBOMB_TYPE_IDS = new Set([
 
 const threatCache = new Map();
 
+function getGateDestination(locationId) {
+  try {
+    const { getGates, getGateConnections } = require('./gates');
+    const { getSystems } = require('./systems');
+
+    const gatesData = getGates();
+    const gateConns = getGateConnections();
+    const systemsData = getSystems();
+
+    const gateId = Number(locationId);
+    const gate = gatesData[gateId];
+    if (!gate) return null;
+
+    const connectedGateId = gateConns[gateId];
+    if (!connectedGateId) return null;
+
+    const connectedGate = gatesData[connectedGateId];
+    if (!connectedGate) return null;
+
+    const destSystem = systemsData[String(connectedGate.system_id)];
+    return destSystem ? destSystem.name : null;
+  } catch {
+    return null;
+  }
+}
+
 function getCached(systemIds) {
   const key = systemIds.sort().join(',');
   const cached = threatCache.get(key);
@@ -55,11 +81,19 @@ function analyzeKills(kills) {
   let hasHictors = false;
   let hasSmartbombs = false;
 
+  const gatesByName = {};
   for (const kill of gateKills) {
     const { hasDictors: d, hasHictors: h } = classifyAttackers(kill);
     if (d) hasDictors = true;
     if (h) hasHictors = true;
     if (classifyWeapon(kill)) hasSmartbombs = true;
+
+    const locId = String(kill.zkb?.locationID || 'unknown');
+    if (!gatesByName[locId]) gatesByName[locId] = { count: 0, has_dictors: false, has_hictors: false, has_smartbombs: false };
+    gatesByName[locId].count++;
+    if (d) gatesByName[locId].has_dictors = true;
+    if (h) gatesByName[locId].has_hictors = true;
+    if (classifyWeapon(kill)) gatesByName[locId].has_smartbombs = true;
   }
 
   let threatLevel = 'safe';
@@ -71,12 +105,22 @@ function analyzeKills(kills) {
     threatLevel = 'warning';
   }
 
+  const gateDetails = Object.entries(gatesByName).map(([locId, info]) => ({
+    gate_id: locId,
+    destination: getGateDestination(locId),
+    kills: info.count,
+    has_dictors: info.has_dictors,
+    has_hictors: info.has_hictors,
+    has_smartbombs: info.has_smartbombs,
+  }));
+
   return {
     kill_count: killCount,
     has_dictors: hasDictors,
     has_hictors: hasHictors,
     has_smartbombs: hasSmartbombs,
     threat_level: threatLevel,
+    gate_details: gateDetails,
   };
 }
 

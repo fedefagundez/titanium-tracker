@@ -315,4 +315,6 @@ module.exports = {
   getWarpSpeedByTypeId,
   getSystemGates: () => systemGates,
   getGates: () => gates,
+  getJumpConnections: () => jumpConnections,
+  getGateConnections: () => gateConnections,
 };

@@ -49,3 +49,13 @@ export async function getCharacterShip() {
   if (!resp.ok) throw new Error('Error obteniendo nave');
   return resp.json();
 }
+
+let mapDataCache = null
+
+export async function getMapData() {
+  if (mapDataCache) return mapDataCache
+  const resp = await fetch(`${API_URL}/api/map/data`);
+  if (!resp.ok) throw new Error('Error obteniendo datos del mapa');
+  mapDataCache = await resp.json();
+  return mapDataCache
+}
