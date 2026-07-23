@@ -70,7 +70,17 @@
             <span v-else-if="loadingThreats" class="kills-loading">...</span>
           </td>
           <td class="cell-info">
-            <span v-if="!loadingThreats && threats[sys.id]" class="info-text" :class="'threat-' + (threats[sys.id]?.threat_level || 'safe')">
+            <span v-if="!loadingThreats && threats[sys.id] && threats[sys.id].threat_level === 'safe'" class="info-text threat-safe">Sin actividad en puertas</span>
+            <div v-else-if="!loadingThreats && threats[sys.id] && threats[sys.id].gate_details && threats[sys.id].gate_details.length" class="gate-list">
+              <div v-for="(g, gi) in threats[sys.id].gate_details" :key="gi" class="gate-item">
+                <span class="gate-kills-count">{{ g.kills }} kill{{ g.kills > 1 ? 's' : '' }}</span>
+                <span class="gate-destination">hacia {{ g.destination || '?' }}</span>
+                <span v-if="g.has_dictors" class="gate-badge badge-d">D</span>
+                <span v-if="g.has_hictors" class="gate-badge badge-h">H</span>
+                <span v-if="g.has_smartbombs" class="gate-badge badge-s">S</span>
+              </div>
+            </div>
+            <span v-else-if="!loadingThreats && threats[sys.id]" class="info-text" :class="'threat-' + (threats[sys.id]?.threat_level || 'safe')">
               {{ infoText(threats[sys.id]) }}
             </span>
           </td>
@@ -339,6 +349,14 @@ watch(() => props.route, fetchThreats)
   font-size: 14px;
 }
 
+.threat-table thead tr {
+  border-bottom: 1px solid var(--line);
+}
+
+.threat-table tbody tr {
+  border-bottom: 1px solid var(--line-dim);
+}
+
 .threat-table th {
   font-size: 11px;
   font-weight: 700;
@@ -347,38 +365,74 @@ watch(() => props.route, fetchThreats)
   color: var(--ink-dim);
   text-align: left;
   padding: 10px 10px;
-  border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 
 .threat-table td {
   padding: 10px 10px;
-  border-bottom: 1px solid var(--line-dim);
+}
+
+.cell-system {
+  white-space: nowrap;
   vertical-align: middle;
 }
 
-.col-num { width: 30px; }
-.col-region { width: 110px; }
-.col-pos { width: 36px; text-align: center; }
-.col-kills { width: 60px; text-align: center; }
-.col-info { min-width: 160px; }
-.col-score { width: 50px; text-align: center; }
-.col-links { width: 100px; }
-
-/* Row states */
-.row-safe td { background: transparent; }
-
-.row-warning td {
-  background: rgba(224, 168, 62, 0.06);
+.cell-region {
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.row-danger td {
-  background: rgba(209, 72, 63, 0.06);
+.cell-pos {
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.cell-kills {
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.cell-info {
+  vertical-align: middle;
+}
+
+.cell-score {
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.cell-links {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.col-num { width: 28px; }
+.col-region { width: 90px; }
+.col-system { min-width: 120px; }
+.col-pos { width: 30px; text-align: center; }
+.col-kills { width: 55px; text-align: center; }
+.col-info { width: 260px; }
+.col-score { width: 45px; text-align: center; }
+.col-links { width: 70px; }
+
+/* Row states */
+.row-safe { background: transparent; }
+
+.row-warning {
+  background: rgba(224, 168, 62, 0.08);
+}
+
+.row-danger {
+  background: rgba(209, 72, 63, 0.08);
 }
 
 .row-warning td:first-child,
 .row-danger td:first-child {
   border-left: 3px solid;
+  background: transparent;
 }
 
 .row-warning td:first-child { border-left-color: var(--contested); }
@@ -519,5 +573,57 @@ watch(() => props.route, fetchThreats)
 .link-sep {
   color: var(--ink-dim);
   margin: 0 4px;
+}
+
+/* Gate details */
+.gate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gate-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.gate-kills-count {
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 48px;
+}
+
+.gate-destination {
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
+.gate-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 2px;
+}
+
+.badge-d {
+  color: var(--hostile);
+  background: rgba(209, 72, 63, 0.15);
+}
+
+.badge-h {
+  color: var(--contested);
+  background: rgba(224, 168, 62, 0.15);
+}
+
+.badge-s {
+  color: var(--hostile);
+  background: rgba(209, 72, 63, 0.15);
 }
 </style>
