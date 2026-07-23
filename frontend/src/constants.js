@@ -14,5 +14,20 @@ export const FLAG_OPTIONS = [
 
 export const FLAG_LABELS = { secure: 'Segura', shortest: 'R\u00E1pida', insecure: 'Peligrosa' }
 
+export const THREAT_LEVELS = { safe: 'safe', warning: 'warning', danger: 'danger' }
+
+export const THREAT_COLORS = {
+  safe: '#3ddc97',
+  warning: '#e0a83e',
+  danger: '#d1483f',
+}
+
+export const SECURITY_COLORS = {
+  highsec: '#5fc9ff',
+  lowsec: '#e0a83e',
+  nullsec: '#d1483f',
+  unknown: '#8ea0a8',
+}
+
 export const DEFAULT_WARP_SPEED = 3.0
 export const DEFAULT_ALIGN_TIME = 5

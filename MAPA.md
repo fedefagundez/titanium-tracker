@@ -7,7 +7,7 @@ Permite planificar rutas, recibir alertas de peligro en tiempo real y compartirl
 
 **Stack:** Vue 3 + Vite | Express 4 | PostgreSQL 16
 **Auth:** EVE SSO (OAuth2 + PKCE) → JWT propio
-**Arquitectura:** MVC simplificado + Component-based UI con CSS Grid
+**Arquitectura:** MVC simplificado + Component-based UI con CSS Grid + Composables
 
 ---
 
@@ -32,9 +32,10 @@ titanium-tracker/
 │       ├── migrate.js              # Ejecuta migraciones SQL desde src/migrations/
 │       ├── data/
 │       │   ├── csv.js              # Utilidades compartidas: parseCSVFile(), downloadCSV(), CACHE_DIR
-│       │   ├── systems.js          # Carga CSVs de Fuzzwork, lookup table, búsqueda, regiones
+│       │   ├── systems.js          # Carga CSVs de Fuzzwork, lookup table, búsqueda, regiones, coordenadas
 │       │   ├── gates.js            # Stargates, cálculo de tiempo de warp, conexiones puerta-a-puerta
-│       │   └── threats.js          # Detección de amenazas vía zKillboard API
+│       │   ├── threats.js          # Detección de amenazas vía zKillboard API (con gate_details)
+│       │   └── map.js              # Datos del mapa completo: sistemas + conexiones + regiones (cache 1h)
 │       ├── middleware/
 │       │   └── auth.js             # requireAuth (JWT HS256) + requireRole(...roles)
 │       ├── routes/
@@ -42,6 +43,7 @@ titanium-tracker/
 │       │   ├── systems.js          # GET /api/systems/search?q= — autocompletado
 │       │   ├── routes.js           # POST /api/routes/calculate — cálculo vía ESI
 │       │   ├── threats.js          # POST /api/systems/threats — amenazas por sistemas
+│       │   ├── map.js              # GET /api/map/data — datos del mapa (sistemas, conexiones, regiones)
 │       │   └── location.js         # GET /api/location, GET /api/ship — posición y nave actual
 │       └── migrations/
 │           ├── 001_create_users.sql    # CREATE TABLE users
@@ -57,12 +59,16 @@ titanium-tracker/
 │       ├── main.js                 # createApp + router + import style.css
 │       ├── App.vue                 # <router-view />
 │       ├── style.css               # Variables CSS + utilidades globales
-│       ├── constants.js            # API_URL, ROLE_LABELS, FLAG_OPTIONS, FLAG_LABELS, DEFAULT_WARP_SPEED, DEFAULT_ALIGN_TIME
-│       ├── api.js                  # Cliente HTTP: searchSystems(), calculateRoute(), getThreats(), getCharacterLocation(), getCharacterShip()
+│       ├── constants.js            # API_URL, ROLE_LABELS, FLAG_OPTIONS, FLAG_LABELS, THREAT_COLORS, SECURITY_COLORS, DEFAULT_WARP_SPEED, DEFAULT_ALIGN_TIME
+│       ├── api.js                  # Cliente HTTP: searchSystems(), calculateRoute(), getThreats(), getCharacterLocation(), getCharacterShip(), getMapData()
 │       ├── auth.js                 # State de sesión, loadSession(), getToken(), logout()
 │       ├── router.js               # Rutas: / (home, auth), /login (guest), /error (guest)
 │       ├── assets/
 │       │   └── vue.svg
+│       ├── composables/
+│       │   ├── usePilotLocation.js # Ubicación del piloto: fetch + interval 30s + cleanup
+│       │   ├── useThreats.js       # Fetch de amenazas: reactivo al route, loading state
+│       │   └── useMapInteraction.js# Drag/zoom/pan del mapa SVG: mouse + wheel + teclado
 │       ├── data/
 │       │   └── warp.js             # getWarpSpeedByTypeId(), formatTime(), SHIP_WARP_SPEEDS
 │       ├── views/
@@ -75,8 +81,9 @@ titanium-tracker/
 │           ├── RouteSidebar.vue        # Sidebar colapsable que contiene el planner
 │           ├── MainContent.vue         # Panel derecho: toolbar + viewport (ruta/amenazas/mapa)
 │           ├── ViewToggle.vue          # Toggle Ruta/Mapa
-│           ├── RouteList.vue           # Tabla estilo Gatecamp Check con amenazas
-│           └── RouteMap.vue            # Placeholder para futuro mapa
+│           ├── RouteList.vue           # Tabla estilo Gatecamp Check con amenazas + progreso
+│           ├── RouteMap.vue            # Mapa SVG interactivo: drag/zoom, nodos, amenazas, piloto
+│           └── GateDetails.vue         # Componente reutilizable de detalles de gate (kills, badges)
 │
 └── eve_fw_corp.html                # Prototipo de referencia visual (Coldsteel Directive)
 ```
@@ -90,18 +97,20 @@ titanium-tracker/
 ```
 server.js
 ├── data/csv.js         ← Utilidades: parseCSVFile(), downloadCSV(), CACHE_DIR
-├── data/systems.js     ← Model: carga datos, lookup, búsqueda, regiones
+├── data/systems.js     ← Model: carga datos, lookup, búsqueda, regiones, coordenadas (x,y,z)
 ├── data/gates.js       ← Model: stargates, cálculo de tiempo de warp, conexiones puerta-a-puerta
-├── data/threats.js     ← Model: detección de amenazas vía zKillboard
+├── data/threats.js     ← Model: detección de amenazas vía zKillboard (con gate_details por destino)
+├── data/map.js         ← Model: datos completos del mapa (sistemas + conexiones + regiones, cache 1h)
 ├── routes/auth.js      ← Controller: autenticación EVE SSO
 ├── routes/systems.js   ← Controller: búsqueda de sistemas
 ├── routes/routes.js    ← Controller: cálculo de rutas vía ESI
 ├── routes/threats.js   ← Controller: amenazas por sistemas
+├── routes/map.js       ← Controller: datos del mapa
 ├── routes/location.js  ← Controller: ubicación y nave del personaje
 └── middleware/auth.js   ← Middleware: JWT + roles
 ```
 
-### Frontend — Component-based + CSS Grid
+### Frontend — Component-based + CSS Grid + Composables
 
 ```
 HomeView.vue             ← Grid shell: header + sidebar + main
@@ -112,7 +121,16 @@ HomeView.vue             ← Grid shell: header + sidebar + main
 │   └── MainContent      ← Panel derecho
 │       ├── ViewToggle   ← Toggle Ruta/Mapa
 │       ├── RouteList    ← Tabla de amenazas estilo Gatecamp Check
-│       └── RouteMap     ← Placeholder para mapa
+│       │   └── GateDetails ← Detalle de kills por gate (reutilizable)
+│       └── RouteMap     ← Mapa SVG interactivo (drag/zoom, nodos, amenazas, piloto)
+```
+
+**Composables** (lógica reutilizable extraída de componentes):
+```
+composables/
+├── usePilotLocation.js  ← Ubicación del piloto: fetch + interval 30s + cleanup
+├── useThreats.js        ← Fetch de amenazas: reactivo al route + loading state
+└── useMapInteraction.js ← Drag/zoom/pan del mapa SVG: mouse + wheel + teclado (+/-/0)
 ```
 
 **Layout:** CSS Grid con `grid-template-columns: 380px 1fr`
@@ -131,6 +149,8 @@ gates.js ← Carga CSVs: mapDenormalize.csv + mapSolarSystemJumps.csv + mapJumps
 ├── getSecurityLevel()        ← Determina highsec/lowsec/nullsec por sistema
 ├── findGateByConnection()    ← Puerta de conexión usando mapJumps.csv
 ├── findGateDistance()        ← Distancia euclidiana entre dos puertas
+├── getGateConnections()      ← Mapa bidireccional: stargateID ↔ destinationID
+├── getJumpConnections()      ← Mapa de saltos entre sistemas (para mapa completo)
 ├── SHIP_WARP_SPEEDS          ← Mapa de velocidades por ship_type_id
 └── gateConnections           ← Mapa bidireccional: stargateID ↔ destinationID
 ```
@@ -194,7 +214,7 @@ location.js
 ├── refreshAccessToken()    ← Renueva access_token usando refresh_token de la DB
 └── Endpoints:
     ├── GET /api/location   ← Posición actual del personaje (solar_system_id)
-    └── GET /api/ship       ← Nave actual (ship_type_id, ship_name)
+    └── GET /api/ship       ← Nave actual del personaje (ship_type_id, ship_name)
 ```
 
 ---
@@ -209,9 +229,9 @@ location.js
 5. Backend valida IDs contra lookup table
 6. Backend llama ESI → GET /v1/route/{origin}/{destination}/?flag=...&avoid=...
 7. ESI retorna array de system IDs
-8. Backend resuelve IDs a nombres desde lookup table (incluye region_name)
+8. Backend resuelve IDs a nombres desde lookup table (incluye region_name + coordenadas x,y,z)
 9. RoutePlanner emite 'route-calculated' con el resultado
-10. HomeView actualiza routeResult → MainContent muestra tabla de amenazas
+10. HomeView actualiza routeResult → MainContent muestra tabla de amenazas / mapa
 ```
 
 ---
@@ -219,20 +239,63 @@ location.js
 ## Flujo de detección de amenazas
 
 ```
-1. RouteList recibe route como prop
-2. OnMounted → fetchThreats() llama POST /api/systems/threats
+1. RouteList / RouteMap reciben route como prop
+2. useThreats composable → fetchThreats() llama POST /api/systems/threats
 3. Backend recibe array de system IDs
 4. Para cada sistema → fetchKillsForSystem() llama zKillboard API
    - Endpoint: /api/kills/solarSystemID/{id}/pastSeconds/3600/
    - Ventana: última hora (3600 segundos)
 5. analyzeKills() filtra kills en stargates (locationID empieza con 500)
 6. Para cada kill en gate:
-   - classifyAttackers(): verifica ship_type_id contra interdictors (22456-22466)
+   - classifyAttackers(): verifica ship_type_id contra interdictors (22456-22466) / heavy interdictors (22852-22878)
    - classifyWeapon(): verifica weapon_type_id contra smartbombs (3419-3666)
+   - buildGateAggregates(): agrupa kills por locationID con contadores de dictors/hictors/smartbombs
 7. Calcula threat_level: safe / warning (1-2 kills) / danger (3+ o amenazas especiales)
-8. Cache: resultados cacheados 60 segundos en memoria
-9. Frontend renderiza tabla: #, Región, Sistema/Sec, Kills, Info, Links
+8. buildGateDetails(): resuelve destination name por gate usando gateConnections
+9. Cache: resultados cacheados 60 segundos en memoria
+10. Frontend renderiza: tabla (RouteList) / mapa con nodos coloreados + triángulos pulsantes (RouteMap)
 ```
+
+---
+
+## Flujo del mapa interactivo
+
+```
+1. RouteMap recibe route como prop
+2. useThreats composable → fetchThreats() para colorir nodos por amenaza
+3. usePilotLocation composable → fetchLocation() cada 30s para posición del piloto
+4. nodes computed → normaliza coordenadas x,z del route a espacio SVG (escala 500px)
+   - Color por security_level: highsec=#5fc9ff, lowsec=#e0a83e, nullsec=#d1483f
+   - Override por threat_level: warning=#e0a83e, danger=#d1483f
+   - Override especial: origen/destino siempre #5fc9ff
+5. threatNodes computed → filtra nodos con warning/danger para triángulos pulsantes
+6. segments computed → pares de nodos adyacentes para líneas de ruta
+7. useMapInteraction composable → drag (pan) + wheel (zoom) + teclado (+/-/0)
+8. Tooltip: muestra nombre, sec status, region, kills, gate_details con badges D/H/S
+```
+
+### Elementos del mapa SVG
+
+| Elemento | Descripción |
+|----------|-------------|
+| `<line>` | Segmentos de ruta entre sistemas adyacentes |
+| `<circle>` | Nodos de sistema (radio 8px si es endpoint, 5px si es intermedio) |
+| `<polygon>` | Triángulos pulsantes sobre sistemas con amenaza (warning=amarillo, danger=rojo) |
+| `<circle class="pulse-ring">` | Anillo pulsante sobre la posición actual del piloto |
+| `<text>` | Labels de nombre de sistema (visibles en hover o para endpoints) |
+
+### Colores del mapa
+
+| Elemento | Color | Descripción |
+|----------|-------|-------------|
+| Highsec | `#5fc9ff` | Seguridad alta |
+| Lowsec | `#e0a83e` | Seguridad baja |
+| Nullsec | `#d1483f` | Seguridad nula |
+| Safe threat | `#3ddc97` | Sin actividad hostil |
+| Warning threat | `#e0a83e` | 1-2 kills en puertas |
+| Danger threat | `#d1483f` | 3+ kills o dictors/hictors/smartbombs |
+| Pilot position | `#5fc9ff` | Ubicación actual del piloto |
+| Route segments | `#3a8fc7` | Líneas de ruta |
 
 ---
 
@@ -300,7 +363,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 | POST | `/auth/logout` | Cerrar sesión |
 | GET | `/api/systems/search?q=jita` | Buscar sistemas por nombre |
 | POST | `/api/routes/calculate` | Calcular ruta entre sistemas (incluye time_breakdown) |
-| POST | `/api/systems/threats` | Obtener amenazas por sistemas (zKillboard) |
+| POST | `/api/systems/threats` | Obtener amenazas por sistemas (zKillboard, con gate_details) |
+| GET | `/api/map/data` | Datos completos del mapa: sistemas + conexiones + regiones (cache 1h) |
 | GET | `/api/location` | Ubicación actual del personaje (requiere JWT + refresh token ESI) |
 | GET | `/api/ship` | Nave actual del personaje con tipo de nave (requiere JWT + refresh token ESI) |
 
@@ -357,6 +421,59 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 }
 ```
 
+### POST /api/systems/threats — Respuesta (por sistema)
+
+```json
+{
+  "30000142": {
+    "kill_count": 3,
+    "has_dictors": true,
+    "has_hictors": false,
+    "has_smartbombs": false,
+    "threat_level": "danger",
+    "gate_details": [
+      {
+        "gate_id": "50000142",
+        "destination": "Jita",
+        "kills": 2,
+        "has_dictors": true,
+        "has_hictors": false,
+        "has_smartbombs": false
+      }
+    ]
+  }
+}
+```
+
+### GET /api/map/data — Respuesta
+
+```json
+{
+  "systems": [
+    {
+      "id": 30000142,
+      "name": "Jita",
+      "region_id": 10000002,
+      "region_name": "The Forge",
+      "constellation_id": 20000020,
+      "security_status": 0.946,
+      "security_level": "highsec",
+      "x": -7.16919e+16,
+      "y": -1.65951e+17,
+      "z": -2.74455e+17
+    }
+  ],
+  "connections": [
+    { "from": 30000142, "to": 30000143 }
+  ],
+  "regions": [
+    { "id": 10000002, "name": "The Forge" }
+  ],
+  "system_count": 8490,
+  "connection_count": 45210
+}
+```
+
 ---
 
 ## Layout — CSS Grid
@@ -369,13 +486,15 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 │  (380px)     │  Toolbar: [Ruta] [Mapa]                   │
 │              ├───────────────────────────────────────────┤
 │  Planificar  │  Tabla de amenazas (estilo Gatecamp Check)│
-│  Ruta        │                                           │
-│              │  #  Region  Sistema/Sec  Kills  Info  Links│
-│  [Origen]    │  0  Forge   Jita 0.9     -     ✓    zKb·D│
-│  [Destino]   │  1  Forge   Perm 0.9     -     ✓    zKb·D│
-│  [Evitar]    │  2  Heimat  Amam 0.4     2     ⚠    zKb·D│
-│  [Tipo]      │  3  Citadel Tama 0.3    33     🔴    zKb·D│
-│  [Calcular]  │                                           │
+│  Ruta        │  o                                        │
+│              │  Mapa SVG interactivo                     │
+│  [Origen]    │  (drag/zoom, nodos, amenazas, piloto)    │
+│  [Destino]   │                                           │
+│  [Evitar]    │  #  Region  Sistema/Sec  Kills  Info  Links│
+│  [Tipo]      │  0  Forge   Jita 0.9     -     ✓    zKb·D│
+│  [Calcular]  │  1  Forge   Perm 0.9     -     ✓    zKb·D│
+│              │  2  Heimat  Amam 0.4     2     ⚠    zKb·D│
+│              │  3  Citadel Tama 0.3    33     🔴    zKb·D│
 ├──────────────┴───────────────────────────────────────────┤
 ```
 
@@ -393,14 +512,21 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 | # | Número de orden en la ruta |
 | Región | Nombre de la región (The Forge, Heimatar, etc.) |
 | Sistema / Sec | Dot de seguridad + nombre + valor numérico |
+| Pos | Indicador de posición actual del piloto (punto pulsante) / check de visitado |
 | Kills (1h) | Kills en stargates en la última hora |
-| Info | Texto descriptivo del nivel de amenaza |
+| Info | Detalle de kills por gate: "X kills hacia SistemaDestino" + badges D/H/S |
+| Riesgo | Score numérico: 0 (safe) / 50 (warning) / 100 (danger) |
 | Links | zKillboard y Dotlan (abren en nueva pestaña) |
 
 **Niveles de amenaza:**
 - `safe` → 0 kills, fondo normal, checkmark verde
-- `warning` → 1-2 kills, borde amarillo, fondo sutil amarillo
-- `danger` → 3+ kills o dictors/hictors/smartbombs, borde rojo
+- `warning` → 1-2 kills, borde amarillo izquierdo, fondo sutil amarillo
+- `danger` → 3+ kills o dictors/hictors/smartbombs, borde rojo izquierdo, fondo sutil rojo
+
+**Estados de fila:**
+- `row-current` → Sistema actual del piloto (fondo azul sutil, borde azul)
+- `row-visited` → Sistemas ya visitados (opacity reducida)
+- `row-warning` / `row-danger` → Nivel de amenaza
 
 ---
 
@@ -417,8 +543,15 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 | --ink | #dbe6ea | Texto principal |
 | --ink-dim | #8ea0a8 | Texto secundario |
 | --line | #2a3a42 | Bordes |
-| --online | #3ddc97 | En línea |
-| --contested | #e0a83e | Disputado |
+| --line-dim | #151d21 | Bordes sutiles |
+| --online | #3ddc97 | En línea / safe |
+| --contested | #e0a83e | Disputado / warning |
+
+**Constantes centralizadas (constants.js):**
+```js
+THREAT_COLORS = { safe: '#3ddc97', warning: '#e0a83e', danger: '#d1483f' }
+SECURITY_COLORS = { highsec: '#5fc9ff', lowsec: '#e0a83e', nullsec: '#d1483f', unknown: '#8ea0a8' }
+```
 
 ---
 
@@ -444,6 +577,18 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 | 2.3 | Estimación de tiempo total de viaje (cálculo de warp real) | ✅ |
 | 2.4 | Score de riesgo por sistema, basado en kills recientes | ✅ |
 
+### Fase 2.5 — Mapa interactivo
+
+| # | Requerimiento | Estado |
+|---|---|---|
+| 2.5.1 | Mapa SVG con drag (pan) y scroll (zoom) | ✅ |
+| 2.5.2 | Nodos coloreados por security level y threat level | ✅ |
+| 2.5.3 | Triángulos pulsantes en sistemas con amenaza (warning/danger) | ✅ |
+| 2.5.4 | Indicador de posición del piloto (anillo pulsante) | ✅ |
+| 2.5.5 | Tooltip con kills, region, gate details y badges D/H/S | ✅ |
+| 2.5.6 | Controles de zoom (+/-/0) y teclado | ✅ |
+| 2.5.7 | Labels visibles para origin/destination y sistemas con amenaza | ✅ |
+
 ### Fase 3-6 — Ver guia-proyecto.md
 
 ---
@@ -452,7 +597,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 
 | Fuente | Uso | Frecuencia de actualización |
 |---|---|---|
-| Fuzzwork mapSolarSystems.csv | Nombres de sistemas, regiones, seguridad | Diaria (expires 11:05 UTC) |
+| Fuzzwork mapSolarSystems.csv | Nombres de sistemas, regiones, seguridad, coordenadas | Diaria (expires 11:05 UTC) |
 | Fuzzwork mapRegions.csv | Nombres de regiones | Diaria |
 | Fuzzwork mapJumps.csv | Conexiones exactas puerta-a-puerta | Diaria |
 | CCP ESI /route/ | Cálculo de rutas | Cache 24h |

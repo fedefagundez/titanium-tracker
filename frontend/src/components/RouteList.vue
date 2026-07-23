@@ -73,11 +73,7 @@
             <span v-if="!loadingThreats && threats[sys.id] && threats[sys.id].threat_level === 'safe'" class="info-text threat-safe">Sin actividad en puertas</span>
             <div v-else-if="!loadingThreats && threats[sys.id] && threats[sys.id].gate_details && threats[sys.id].gate_details.length" class="gate-list">
               <div v-for="(g, gi) in threats[sys.id].gate_details" :key="gi" class="gate-item">
-                <span class="gate-kills-count">{{ g.kills }} kill{{ g.kills > 1 ? 's' : '' }}</span>
-                <span class="gate-destination">hacia {{ g.destination || '?' }}</span>
-                <span v-if="g.has_dictors" class="gate-badge badge-d">D</span>
-                <span v-if="g.has_hictors" class="gate-badge badge-h">H</span>
-                <span v-if="g.has_smartbombs" class="gate-badge badge-s">S</span>
+                <GateDetails :gate="g" />
               </div>
             </div>
             <span v-else-if="!loadingThreats && threats[sys.id]" class="info-text" :class="'threat-' + (threats[sys.id]?.threat_level || 'safe')">
@@ -101,30 +97,32 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed } from 'vue'
 import { FLAG_LABELS } from '../constants'
-import { getThreats, getCharacterLocation, getCharacterShip } from '../api'
+import { getCharacterShip } from '../api'
 import { formatTime } from '../data/warp'
+import { usePilotLocation } from '../composables/usePilotLocation'
+import { useThreats } from '../composables/useThreats'
+import GateDetails from './GateDetails.vue'
+import { ref, onMounted } from 'vue'
 
 const props = defineProps({
   route: { type: Object, required: true },
 })
 
 const FLAG_CLASSES = { secure: 'allied', shortest: 'neutral', insecure: 'hostile' }
-const JUMP_TIME_MINUTES = 5
 
-const threats = ref({})
-const loadingThreats = ref(false)
-const currentSystemId = ref(null)
 const currentShip = ref(null)
-let locationInterval = null
+const routeRef = computed(() => props.route)
+const { threats, loading: loadingThreats } = useThreats(routeRef)
+const { currentSystemId } = usePilotLocation(routeRef)
 
 const flagLabel = computed(() => FLAG_LABELS[props.route.flag] || props.route.flag)
 const flagClass = computed(() => FLAG_CLASSES[props.route.flag] || 'neutral')
 
 const currentSystemIndex = computed(() => {
   if (!currentSystemId.value) return -1
-  return props.route.route.findIndex((s) => s.id === currentSystemId.value)
+  return props.route.route.findIndex(s => s.id === currentSystemId.value)
 })
 
 const progressPercent = computed(() => {
@@ -151,9 +149,7 @@ function infoText(threat) {
   if (!threat) return ''
   if (threat.threat_level === 'safe') return 'Sin actividad en puertas'
   const parts = []
-  if (threat.kill_count > 0) {
-    parts.push(`${threat.kill_count} kill${threat.kill_count > 1 ? 's' : ''} en puertas`)
-  }
+  if (threat.kill_count > 0) parts.push(`${threat.kill_count} kill${threat.kill_count > 1 ? 's' : ''} en puertas`)
   if (threat.has_dictors) parts.push('Dictors')
   if (threat.has_hictors) parts.push('Hictors')
   if (threat.has_smartbombs) parts.push('Smartbombs')
@@ -165,58 +161,19 @@ function rowClass(sys, i) {
   const classes = {}
   if (currentSystemId.value === sys.id) classes['row-current'] = true
   else if (i < currentSystemIndex.value) classes['row-visited'] = true
-  if (t && !loadingThreats.value) {
-    classes['row-' + t.threat_level] = true
-  }
+  if (t && !loadingThreats.value) classes['row-' + t.threat_level] = true
   return classes
-}
-
-async function fetchThreats() {
-  if (!props.route?.route) return
-  loadingThreats.value = true
-  threats.value = {}
-  try {
-    const ids = props.route.route.map((s) => s.id)
-    threats.value = await getThreats(ids)
-  } catch {
-    threats.value = {}
-  } finally {
-    loadingThreats.value = false
-  }
-}
-
-async function fetchLocation() {
-  try {
-    const data = await getCharacterLocation()
-    currentSystemId.value = data.solar_system_id
-  } catch (err) {
-    console.warn('[RouteList] No se pudo obtener ubicación:', err.message)
-    currentSystemId.value = null
-  }
 }
 
 async function fetchShip() {
   try {
-    const data = await getCharacterShip()
-    currentShip.value = data
-  } catch (err) {
-    console.warn('[RouteList] No se pudo obtener nave:', err.message)
+    currentShip.value = await getCharacterShip()
+  } catch {
     currentShip.value = null
   }
 }
 
-onMounted(() => {
-  fetchThreats()
-  fetchLocation()
-  fetchShip()
-  locationInterval = setInterval(fetchLocation, 30000)
-})
-
-onUnmounted(() => {
-  if (locationInterval) clearInterval(locationInterval)
-})
-
-watch(() => props.route, fetchThreats)
+onMounted(fetchShip)
 </script>
 
 <style scoped>
@@ -588,42 +545,5 @@ watch(() => props.route, fetchThreats)
   gap: 6px;
   font-size: 12px;
   line-height: 1.3;
-}
-
-.gate-kills-count {
-  font-weight: 700;
-  color: var(--ink);
-  min-width: 48px;
-}
-
-.gate-destination {
-  color: var(--ink-dim);
-  font-style: italic;
-}
-
-.gate-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 14px;
-  font-size: 9px;
-  font-weight: 700;
-  border-radius: 2px;
-}
-
-.badge-d {
-  color: var(--hostile);
-  background: rgba(209, 72, 63, 0.15);
-}
-
-.badge-h {
-  color: var(--contested);
-  background: rgba(224, 168, 62, 0.15);
-}
-
-.badge-s {
-  color: var(--hostile);
-  background: rgba(209, 72, 63, 0.15);
 }
 </style>

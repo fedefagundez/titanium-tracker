@@ -1,9 +1,9 @@
 <template>
   <div class="map-root" ref="root">
-    <div class="pilot-info" :class="{ 'pilot-off-route': pilotSystemId && !pilotOnRoute }">
+    <div class="pilot-info" :class="{ 'pilot-off-route': currentSystemId && !pilotOnRoute }">
       <span class="pilot-dot"></span>
-      <span v-if="pilotOnRoute">{{ pilotSystem }}</span>
-      <span v-else-if="pilotSystemId">{{ pilotSystem }} — fuera de ruta</span>
+      <span v-if="pilotOnRoute">{{ currentSystemName }}</span>
+      <span v-else-if="currentSystemId">{{ currentSystemName }} — fuera de ruta</span>
       <span v-else>Ubicando piloto...</span>
     </div>
 
@@ -45,12 +45,8 @@
         <span class="tip-kills-label">kills en puertas (1h)</span>
       </div>
       <div v-if="tipData.gate_details && tipData.gate_details.length" class="tip-gates">
-        <div v-for="(g, i) in tipData.gate_details" :key="i" class="tip-gate" :class="{ 'gate-danger': g.has_dictors || g.has_hictors || g.has_smartbombs }">
-          <span class="gate-kills">{{ g.kills }} kill{{ g.kills > 1 ? 's' : '' }}</span>
-          <span class="gate-dest">hacia {{ g.destination || 'Gate ' + g.gate_id.slice(-4) }}</span>
-          <span v-if="g.has_dictors" class="gate-tag tag-d">Dictors</span>
-          <span v-if="g.has_hictors" class="gate-tag tag-h">Hictors</span>
-          <span v-if="g.has_smartbombs" class="gate-tag tag-s">Smartbombs</span>
+        <div v-for="(g, i) in tipData.gate_details" :key="i" class="tip-gate">
+          <GateDetails :gate="g" />
         </div>
       </div>
     </div>
@@ -58,8 +54,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { getThreats, getCharacterLocation } from '../api'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { THREAT_COLORS, SECURITY_COLORS } from '../constants'
+import { usePilotLocation } from '../composables/usePilotLocation'
+import { useThreats } from '../composables/useThreats'
+import GateDetails from './GateDetails.vue'
 
 const props = defineProps({ route: Object })
 
@@ -73,150 +72,105 @@ const dragStart = ref({x:0,y:0,px:0,py:0})
 const hover = ref(null)
 const tipData = ref(null)
 const tipStyle = ref({})
-const threats = ref({})
-const pilotSystemId = ref(null)
-const pilotSystem = ref(null)
-let locationInterval = null
 
-const SC = {highsec:'#5fc9ff',lowsec:'#e0a83e',nullsec:'#d1483f',unknown:'#8ea0a8'}
-const TC = {safe:'#3ddc97',warning:'#e0a83e',danger:'#d1483f'}
+const routeRef = computed(() => props.route)
+const { threats } = useThreats(routeRef)
+const { currentSystemId, currentSystemName } = usePilotLocation(routeRef)
 
-function fmt(t){
-  if(!t)return''
-  const p=[]
-  if(t.kill_count>0)p.push(t.kill_count+' kills')
-  if(t.has_dictors)p.push('Dictors')
-  if(t.has_hictors)p.push('Hictors')
-  if(t.has_smartbombs)p.push('Smartbombs')
-  return p.join(' · ')||'Safe'
-}
-
-const nodes = computed(()=>{
-  if(!props.route?.route)return[]
-  const r=props.route.route
-  let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity
-  for(const s of r){if(s.x<x0)x0=s.x;if(s.x>x1)x1=s.x;if(s.z<z0)z0=s.z;if(s.z>z1)z1=s.z}
-  const sc=500/Math.max(x1-x0||1,z1-z0||1)
-  return r.map((s,i)=>{
-    const t=threats.value?.[s.id]
-    let c=SC[s.security_level]||SC.unknown
-    if(t)c=TC[t.threat_level]||c
-    if(i===0||i===r.length-1)c='#5fc9ff'
-    return{id:s.id,name:s.name,x:(s.x-x0)*sc,y:(s.z-z0)*sc,
-      sec:s.security_status?.toFixed(1)||'?',level:s.security_level||'unknown',
-      region:s.region_name||'',
-      threat_raw:t?t.kill_count:null,
-      threat_level:t?t.threat_level:null,
-      threat_info:t?(t.has_dictors?'Dictors · ':'')+(t.has_hictors?'Hictors · ':'')+(t.has_smartbombs?'Smartbombs':'').replace(/ · $/,''):'',
-      gate_details:t&&t.gate_details?t.gate_details:[],
-      color:c,ep:i===0||i===r.length-1}
+const nodes = computed(() => {
+  if (!props.route?.route) return []
+  const r = props.route.route
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+  for (const s of r) { if (s.x < x0) x0 = s.x; if (s.x > x1) x1 = s.x; if (s.z < z0) z0 = s.z; if (s.z > z1) z1 = s.z }
+  const sc = 500 / Math.max(x1 - x0 || 1, z1 - z0 || 1)
+  return r.map((s, i) => {
+    const t = threats.value?.[s.id]
+    let c = SECURITY_COLORS[s.security_level] || SECURITY_COLORS.unknown
+    if (t) c = THREAT_COLORS[t.threat_level] || c
+    if (i === 0 || i === r.length - 1) c = '#5fc9ff'
+    return {
+      id: s.id, name: s.name, x: (s.x - x0) * sc, y: (s.z - z0) * sc,
+      sec: s.security_status?.toFixed(1) || '?', level: s.security_level || 'unknown',
+      region: s.region_name || '',
+      threat_raw: t ? t.kill_count : null,
+      threat_level: t ? t.threat_level : null,
+      gate_details: t && t.gate_details ? t.gate_details : [],
+      color: c, ep: i === 0 || i === r.length - 1,
+    }
   })
 })
 
-const segments = computed(()=>{
-  const s=[]
-  for(let i=0;i<nodes.value.length-1;i++)
-    s.push({x1:nodes.value[i].x,y1:nodes.value[i].y,x2:nodes.value[i+1].x,y2:nodes.value[i+1].y})
+const segments = computed(() => {
+  const s = []
+  for (let i = 0; i < nodes.value.length - 1; i++)
+    s.push({ x1: nodes.value[i].x, y1: nodes.value[i].y, x2: nodes.value[i + 1].x, y2: nodes.value[i + 1].y })
   return s
 })
 
-const threatNodes = computed(()=>{
-  return nodes.value.filter(n=>n.threat_level==='warning'||n.threat_level==='danger')
+const threatNodes = computed(() => {
+  return nodes.value.filter(n => n.threat_level === 'warning' || n.threat_level === 'danger')
 })
 
-const ctr = computed(()=>{
-  if(!nodes.value.length)return{x:0,y:0}
-  let sx=0,sy=0
-  for(const n of nodes.value){sx+=n.x;sy+=n.y}
-  return{x:sx/nodes.value.length,y:sy/nodes.value.length}
+const viewBox = computed(() => {
+  if (!nodes.value.length) return '0 0 100 100'
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+  for (const n of nodes.value) { if (n.x < x0) x0 = n.x; if (n.x > x1) x1 = n.x; if (n.y < y0) y0 = n.y; if (n.y > y1) y1 = n.y }
+  return `${x0 - 80} ${y0 - 80} ${x1 - x0 + 160} ${y1 - y0 + 160}`
 })
 
-const mapTransform = computed(()=>{
-  return `translate(${panX.value},${panY.value}) scale(${zoom.value})`
+const mapTransform = computed(() => `translate(${panX.value},${panY.value}) scale(${zoom.value})`)
+
+const pilotNode = computed(() => {
+  if (!currentSystemId.value) return null
+  return nodes.value.find(n => n.id === currentSystemId.value) || null
 })
 
-const viewBox = computed(()=>{
-  if(!nodes.value.length)return'0 0 100 100'
-  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity
-  for(const n of nodes.value){if(n.x<x0)x0=n.x;if(n.x>x1)x1=n.x;if(n.y<y0)y0=n.y;if(n.y>y1)y1=n.y}
-  return`${x0-80} ${y0-80} ${x1-x0+160} ${y1-y0+160}`
+const pilotOnRoute = computed(() => {
+  if (!currentSystemId.value || !props.route?.route) return false
+  return props.route.route.some(s => s.id === currentSystemId.value)
 })
 
-const pilotNode = computed(()=>{
-  if(!pilotSystemId.value)return null
-  return nodes.value.find(n=>n.id===pilotSystemId.value)||null
-})
-
-const pilotOnRoute = computed(()=>{
-  if(!pilotSystemId.value||!props.route?.route)return false
-  return props.route.route.some(s=>s.id===pilotSystemId.value)
-})
-
-function enterNode(e, n){
-  hover.value=n.id
-  tipData.value=n
-  const r=root.value.getBoundingClientRect()
-  tipStyle.value={left:(e.clientX-r.left+16)+'px',top:(e.clientY-r.top-10)+'px'}
+function enterNode(e, n) {
+  hover.value = n.id
+  tipData.value = n
+  const r = root.value.getBoundingClientRect()
+  tipStyle.value = { left: (e.clientX - r.left + 16) + 'px', top: (e.clientY - r.top - 10) + 'px' }
 }
 
-function leaveNode(){
-  hover.value=null
-  tipData.value=null
+function leaveNode() {
+  hover.value = null
+  tipData.value = null
 }
 
-async function fetchLocation(){
-  try{
-    const d=await getCharacterLocation()
-    pilotSystemId.value=d.solar_system_id
-    const node=nodes.value.find(n=>n.id===d.solar_system_id)
-    pilotSystem.value=node?node.name:null
-  }catch{
-    pilotSystemId.value=null
-    pilotSystem.value=null
-  }
-}
+onMounted(() => {
+  const el = mapSvg.value
 
-onMounted(()=>{
-  const el=mapSvg.value
-
-  el.addEventListener('mousedown',e=>{
-    if(e.button!==0)return
-    dragging.value=true
-    dragStart.value={x:e.clientX,y:e.clientY,px:panX.value,py:panY.value}
+  el.addEventListener('mousedown', e => {
+    if (e.button !== 0) return
+    dragging.value = true
+    dragStart.value = { x: e.clientX, y: e.clientY, px: panX.value, py: panY.value }
     e.preventDefault()
   })
 
-  window.addEventListener('mousemove',e=>{
-    if(!dragging.value)return
-    panX.value=dragStart.value.px+(e.clientX-dragStart.value.x)
-    panY.value=dragStart.value.py+(e.clientY-dragStart.value.y)
+  window.addEventListener('mousemove', e => {
+    if (!dragging.value) return
+    panX.value = dragStart.value.px + (e.clientX - dragStart.value.x)
+    panY.value = dragStart.value.py + (e.clientY - dragStart.value.y)
   })
 
-  window.addEventListener('mouseup',()=>{dragging.value=false})
+  window.addEventListener('mouseup', () => { dragging.value = false })
 
-  el.addEventListener('wheel',e=>{
+  el.addEventListener('wheel', e => {
     e.preventDefault()
-    const d=e.deltaY>0?0.9:1.1
-    const nz=Math.max(0.1,Math.min(10,zoom.value*d))
-    const rect=el.getBoundingClientRect()
-    const mx=e.clientX-rect.left,my=e.clientY-rect.top
-    panX.value=mx-(mx-panX.value)*(nz/zoom.value)
-    panY.value=my-(my-panY.value)*(nz/zoom.value)
-    zoom.value=nz
-  },{passive:false})
-
-  fetchLocation()
-  locationInterval=setInterval(fetchLocation,30000)
+    const d = e.deltaY > 0 ? 0.9 : 1.1
+    const nz = Math.max(0.1, Math.min(10, zoom.value * d))
+    const rect = el.getBoundingClientRect()
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top
+    panX.value = mx - (mx - panX.value) * (nz / zoom.value)
+    panY.value = my - (my - panY.value) * (nz / zoom.value)
+    zoom.value = nz
+  }, { passive: false })
 })
-
-onUnmounted(()=>{
-  if(locationInterval)clearInterval(locationInterval)
-})
-
-watch(()=>props.route,async r=>{
-  if(!r?.route)return
-  try{threats.value=await getThreats(r.route.map(s=>s.id))}catch{threats.value={}}
-},{immediate:true})
 </script>
 
 <style scoped>
@@ -352,17 +306,9 @@ watch(()=>props.route,async r=>{
   border-radius: 4px;
 }
 
-.tip-kills.tl-safe {
-  background: rgba(61, 220, 151, 0.1);
-}
-
-.tip-kills.tl-warning {
-  background: rgba(224, 168, 62, 0.12);
-}
-
-.tip-kills.tl-danger {
-  background: rgba(209, 72, 63, 0.12);
-}
+.tip-kills.tl-safe { background: rgba(61, 220, 151, 0.1); }
+.tip-kills.tl-warning { background: rgba(224, 168, 62, 0.12); }
+.tip-kills.tl-danger { background: rgba(209, 72, 63, 0.12); }
 
 .tip-kills-num {
   font-size: 20px;
@@ -379,53 +325,16 @@ watch(()=>props.route,async r=>{
   color: #8ea0a8;
 }
 
-.tip-threat-info {
-  font-size: 11px;
-  color: #5fc9ff;
-  margin-top: 4px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
 .tip-gates {
   margin-top: 6px;
 }
 
 .tip-gate {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   padding: 3px 0;
-  font-size: 11px;
   border-bottom: 1px solid #1a2a32;
 }
 
 .tip-gate:last-child {
   border-bottom: none;
 }
-
-.gate-kills {
-  color: #dbe6ea;
-  font-weight: 700;
-  min-width: 50px;
-}
-
-.gate-dest {
-  color: #8ea0a8;
-  font-style: italic;
-}
-
-.gate-tag {
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1px 4px;
-  border-radius: 2px;
-}
-
-.tag-d { color: #d1483f; background: rgba(209,72,63,0.15); }
-.tag-h { color: #e0a83e; background: rgba(224,168,62,0.15); }
-.tag-s { color: #d1483f; background: rgba(209,72,63,0.15); }
 </style>
