@@ -19,6 +19,11 @@
           style="cursor:pointer"
           @mouseenter="enterNode($event, n)" @mouseleave="leaveNode()"/>
 
+        <polygon v-for="n in threatNodes" :key="'tri'+n.id"
+          :points="`${n.x},${n.y-22} ${n.x-6},${n.y-12} ${n.x+6},${n.y-12}`"
+          :fill="n.threat_level==='danger'?'#d1483f':'#e0a83e'"
+          class="threat-triangle"/>
+
         <circle v-if="pilotNode" :cx="pilotNode.x" :cy="pilotNode.y"
           r="14" fill="none" stroke="#5fc9ff" stroke-width="2" stroke-opacity="0.6"
           class="pulse-ring"/>
@@ -113,6 +118,10 @@ const segments = computed(()=>{
   for(let i=0;i<nodes.value.length-1;i++)
     s.push({x1:nodes.value[i].x,y1:nodes.value[i].y,x2:nodes.value[i+1].x,y2:nodes.value[i+1].y})
   return s
+})
+
+const threatNodes = computed(()=>{
+  return nodes.value.filter(n=>n.threat_level==='warning'||n.threat_level==='danger')
 })
 
 const ctr = computed(()=>{
@@ -291,6 +300,16 @@ watch(()=>props.route,async r=>{
 @keyframes ring-pulse {
   0%, 100% { stroke-opacity: 0.6; r: 14; }
   50% { stroke-opacity: 0.2; r: 18; }
+}
+
+.threat-triangle {
+  filter: drop-shadow(0 0 4px currentColor);
+  animation: tri-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tri-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .tip {
