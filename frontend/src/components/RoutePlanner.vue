@@ -37,6 +37,36 @@
         </div>
       </div>
 
+      <details class="advanced-settings">
+        <summary class="advanced-toggle">Configuración avanzada</summary>
+        <div class="advanced-fields">
+          <div class="form-row-inline">
+            <label class="field-label">Velocidad de warp (AU/s)</label>
+            <input
+              v-model.number="customWarpSpeed"
+              type="number"
+              class="field-input"
+              placeholder="5.0"
+              min="1"
+              max="8"
+              step="0.5"
+            />
+          </div>
+          <div class="form-row-inline">
+            <label class="field-label">Tiempo de alineación (s)</label>
+            <input
+              v-model.number="customAlignTime"
+              type="number"
+              class="field-input"
+              placeholder="5"
+              min="1"
+              max="30"
+              step="1"
+            />
+          </div>
+        </div>
+      </details>
+
       <button
         class="btn btn-primary btn-block"
         :disabled="!canSubmit || loading"
@@ -53,8 +83,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import SystemAutocomplete from './SystemAutocomplete.vue'
-import { calculateRoute } from '../api'
-import { FLAG_OPTIONS } from '../constants'
+import { calculateRoute, getCharacterShip } from '../api'
+import { FLAG_OPTIONS, DEFAULT_WARP_SPEED, DEFAULT_ALIGN_TIME } from '../constants'
 
 const emit = defineEmits(['route-calculated'])
 
@@ -65,6 +95,8 @@ const avoidList = ref([])
 const flag = ref('safe')
 const loading = ref(false)
 const error = ref('')
+const customWarpSpeed = ref(null)
+const customAlignTime = ref(null)
 
 const canSubmit = computed(() => origin.value && destination.value && !loading.value)
 
@@ -84,11 +116,20 @@ async function calculate() {
   error.value = ''
 
   try {
+    let shipTypeId = null
+    try {
+      const ship = await getCharacterShip()
+      shipTypeId = ship.ship_type_id
+    } catch {}
+
     const result = await calculateRoute({
       origin_id: origin.value.id,
       destination_id: destination.value.id,
       flag: flag.value,
       avoid_ids: avoidList.value.map((s) => s.id),
+      ship_type_id: shipTypeId,
+      warp_speed: customWarpSpeed.value || null,
+      align_time: customAlignTime.value || null,
     })
     emit('route-calculated', result)
   } catch (err) {
@@ -195,5 +236,64 @@ async function calculate() {
   color: var(--hostile);
   font-size: 14px;
   font-weight: 600;
+}
+
+.advanced-settings {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.advanced-toggle {
+  padding: 10px 14px;
+  background: var(--panel-alt);
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.advanced-toggle:hover {
+  color: var(--ink);
+}
+
+.advanced-fields {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--panel);
+}
+
+.form-row-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-input {
+  width: 80px;
+  padding: 6px 10px;
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  text-align: right;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--steel-blue);
+}
+
+.field-input::placeholder {
+  color: var(--ink-dim);
+  opacity: 0.5;
 }
 </style>

@@ -7,11 +7,11 @@ export async function searchSystems(query) {
   return resp.json();
 }
 
-export async function calculateRoute({ origin_id, destination_id, flag, avoid_ids }) {
+export async function calculateRoute({ origin_id, destination_id, flag, avoid_ids, ship_type_id, warp_speed, align_time }) {
   const resp = await fetch(`${API_URL}/api/routes/calculate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin_id, destination_id, flag, avoid_ids }),
+    body: JSON.stringify({ origin_id, destination_id, flag, avoid_ids, ship_type_id, warp_speed, align_time }),
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
@@ -37,5 +37,15 @@ export async function getCharacterLocation() {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) throw new Error('Error obteniendo ubicación');
+  return resp.json();
+}
+
+export async function getCharacterShip() {
+  const token = getToken();
+  if (!token) throw new Error('No hay sesión');
+  const resp = await fetch(`${API_URL}/api/ship`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) throw new Error('Error obteniendo nave');
   return resp.json();
 }

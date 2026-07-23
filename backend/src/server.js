@@ -10,6 +10,7 @@ const routeRoutes = require('./routes/routes');
 const threatRoutes = require('./routes/threats');
 const locationRoutes = require('./routes/location');
 const { loadSystems } = require('./data/systems');
+const { loadGates } = require('./data/gates');
 
 const app = express();
 
@@ -43,6 +44,7 @@ const PORT = process.env.PORT || 3000;
 
 async function start() {
   await loadSystems();
+  await loadGates();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Titanium Tracker API escuchando en puerto ${PORT}`);
   });

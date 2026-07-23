@@ -68,4 +68,40 @@ router.get('/location', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/ship', requireAuth, async (req, res) => {
+  try {
+    const characterId = req.user.eveCharacterId;
+    const accessToken = await getAccessToken(req.user.id);
+
+    const resp = await fetch(`https://esi.evetech.net/latest/characters/${characterId}/ship/`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error('[ship] ESI error:', resp.status, err);
+      return res.status(resp.status).json({ error: 'Error obteniendo nave desde ESI', detail: err });
+    }
+
+    const data = await resp.json();
+
+    const typeResp = await fetch(`https://esi.evetech.net/latest/universe/types/${data.ship_type_id}/?language=es`);
+    let typeName = null;
+    if (typeResp.ok) {
+      const typeData = await typeResp.json();
+      typeName = typeData.name;
+    }
+
+    res.json({
+      ship_item_id: data.ship_item_id,
+      ship_name: data.ship_name,
+      ship_type_id: data.ship_type_id,
+      ship_type_name: typeName,
+    });
+  } catch (err) {
+    console.error('[ship] Error:', err);
+    res.status(500).json({ error: 'Error obteniendo nave' });
+  }
+});
+
 module.exports = router;

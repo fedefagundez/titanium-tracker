@@ -4,6 +4,13 @@
       <div class="threat-meta">
         <span class="threat-jumps display">{{ route.jump_count }} saltos</span>
         <span class="threat-flag badge" :class="flagClass">{{ flagLabel }}</span>
+        <span v-if="route.estimated_time_seconds" class="threat-time">
+          ~{{ formatTime(route.estimated_time_seconds) }}
+        </span>
+        <span v-if="currentShip" class="threat-ship">
+          <img v-if="currentShip.ship_type_id" :src="'https://images.evetech.net/types/' + currentShip.ship_type_id + '/icon?size=32'" class="ship-icon" :alt="currentShip.ship_type_name" />
+          {{ currentShip.ship_type_name || currentShip.ship_name }}
+        </span>
         <span v-if="loadingThreats" class="threats-loading">
           <span class="loading-dot"></span> Analizando amenazas...
         </span>
@@ -86,7 +93,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { FLAG_LABELS } from '../constants'
-import { getThreats, getCharacterLocation } from '../api'
+import { getThreats, getCharacterLocation, getCharacterShip } from '../api'
+import { formatTime } from '../data/warp'
 
 const props = defineProps({
   route: { type: Object, required: true },
@@ -98,6 +106,7 @@ const JUMP_TIME_MINUTES = 5
 const threats = ref({})
 const loadingThreats = ref(false)
 const currentSystemId = ref(null)
+const currentShip = ref(null)
 let locationInterval = null
 
 const flagLabel = computed(() => FLAG_LABELS[props.route.flag] || props.route.flag)
@@ -114,9 +123,11 @@ const progressPercent = computed(() => {
 })
 
 const estimatedMinutes = computed(() => {
-  if (currentSystemIndex.value < 0) return 0
+  if (currentSystemIndex.value < 0 || !props.route.estimated_time_seconds) return 0
+  const totalSeconds = props.route.estimated_time_seconds
   const remaining = props.route.route.length - 1 - currentSystemIndex.value
-  return remaining * JUMP_TIME_MINUTES
+  const total = props.route.route.length - 1
+  return Math.ceil((remaining / total) * totalSeconds / 60)
 })
 
 function riskScore(threat) {
@@ -174,9 +185,20 @@ async function fetchLocation() {
   }
 }
 
+async function fetchShip() {
+  try {
+    const data = await getCharacterShip()
+    currentShip.value = data
+  } catch (err) {
+    console.warn('[RouteList] No se pudo obtener nave:', err.message)
+    currentShip.value = null
+  }
+}
+
 onMounted(() => {
   fetchThreats()
   fetchLocation()
+  fetchShip()
   locationInterval = setInterval(fetchLocation, 30000)
 })
 
@@ -208,6 +230,36 @@ watch(() => props.route, fetchThreats)
 .threat-jumps {
   font-size: 22px;
   color: var(--ink);
+}
+
+.threat-time {
+  font-family: 'Space Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--steel-bright);
+  padding: 4px 10px;
+  background: rgba(95, 201, 255, 0.1);
+  border: 1px solid rgba(95, 201, 255, 0.3);
+  border-radius: 4px;
+}
+
+.threat-ship {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  padding: 4px 10px;
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.ship-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .threats-loading {

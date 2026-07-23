@@ -1,10 +1,10 @@
 const express = require('express');
 const { getById, getNames } = require('../data/systems');
+const { calculateRouteTime, getWarpSpeedByTypeId } = require('../data/gates');
 
 const router = express.Router();
 
 const ESI_ROUTE_URL = 'https://esi.evetech.net/v1/route';
-const ESI_NAMES_URL = 'https://esi.evetech.net/v2/universe/names';
 
 const FLAG_MAP = {
   safe: 'secure',
@@ -16,7 +16,7 @@ const FLAG_MAP = {
 };
 
 router.post('/calculate', async (req, res) => {
-  const { origin_id, destination_id, flag, avoid_ids } = req.body;
+  const { origin_id, destination_id, flag, avoid_ids, ship_type_id, warp_speed, align_time } = req.body;
 
   if (!origin_id || !destination_id) {
     return res.status(400).json({ error: 'origin_id y destination_id son requeridos' });
@@ -26,9 +26,11 @@ router.post('/calculate', async (req, res) => {
   const dest = getById(destination_id);
 
   if (!origin) return res.status(400).json({ error: `Sistema origen ${origin_id} no encontrado` });
-  if (!dest) return res.status(400).json({ error: `Sistema destino ${destination_id} no encontrado` });
+  if (!dest) return res.status(400).json({ error: `Sistema destino ${origin_id} no encontrado` });
 
   const esiFlag = FLAG_MAP[flag] || 'shortest';
+  const warpSpeed = warp_speed || (ship_type_id ? getWarpSpeedByTypeId(ship_type_id) : 3.0);
+  const alignTime = align_time || 5;
 
   try {
     let url = `${ESI_ROUTE_URL}/${origin_id}/${destination_id}/?flag=${esiFlag}`;
@@ -47,12 +49,33 @@ router.post('/calculate', async (req, res) => {
     const routeIds = await routeResp.json();
     const route = getNames(routeIds);
 
+    const timeData = calculateRouteTime(routeIds, warpSpeed, alignTime);
+
+    console.log('=== ROUTE DEBUG ===');
+    console.log('Systems:', routeIds.join(' → '));
+    console.log('Warp speed:', warpSpeed, 'AU/s');
+    console.log('Align time:', alignTime, 's');
+    console.log('Breakdown:', JSON.stringify(timeData.breakdown));
+    console.log('Jumps:');
+    timeData.jumps.forEach((j, i) => {
+      console.log(`  ${i}: ${j.from}→${j.to} inter=${j.warp_time}s intra=${j.intra_warp_time}s`);
+    });
+    console.log('Total:', timeData.total_seconds, 'seconds =', Math.floor(timeData.total_seconds / 60) + 'm ' + (timeData.total_seconds % 60) + 's');
+    console.log('===================');
+
     res.json({
       origin: { id: origin.id, name: origin.name },
       destination: { id: dest.id, name: dest.name },
       flag: esiFlag,
       jump_count: routeIds.length - 1,
+      estimated_time_seconds: timeData.total_seconds,
+      warp_speed: warpSpeed,
+      align_time: alignTime,
+      ship_type_id: ship_type_id || null,
       route,
+      time_breakdown: timeData.breakdown,
+      jumps_detail: timeData.jumps,
+      debug: timeData.debug,
     });
   } catch (err) {
     console.error('[routes] Error calculando ruta:', err);

@@ -13,3 +13,6 @@ export const FLAG_OPTIONS = [
 ]
 
 export const FLAG_LABELS = { secure: 'Segura', shortest: 'R\u00E1pida', insecure: 'Peligrosa' }
+
+export const DEFAULT_WARP_SPEED = 3.0
+export const DEFAULT_ALIGN_TIME = 5
