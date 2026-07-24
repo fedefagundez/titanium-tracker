@@ -11,26 +11,29 @@
       <g :transform="mapTransform">
         <line v-for="(seg, i) in segments" :key="i"
           :x1="seg.x1" :y1="seg.y1" :x2="seg.x2" :y2="seg.y2"
-          stroke="#3a8fc7" stroke-width="2" stroke-opacity="0.8"/>
+          stroke="#3a8fc7" stroke-width="2" stroke-opacity="0.8"
+          vector-effect="non-scaling-stroke"/>
 
         <circle v-for="n in nodes" :key="n.id"
-          :cx="n.x" :cy="n.y" :r="n.ep ? 8 : 5"
+          :cx="n.x" :cy="n.y" :r="nodeRadius(n.ep)"
           :fill="n.color" :stroke="hover===n.id?'#fff':'#2a3a42'" :stroke-width="hover===n.id?2:1"
+          vector-effect="non-scaling-stroke"
           style="cursor:pointer"
           @mouseenter="enterNode($event, n)" @mouseleave="leaveNode()"/>
 
-        <polygon v-for="n in threatNodes" :key="'tri'+n.id"
-          :points="`${n.x},${n.y-22} ${n.x-6},${n.y-12} ${n.x+6},${n.y-12}`"
-          :fill="n.threat_level==='danger'?'#d1483f':'#e0a83e'"
-          class="threat-triangle"/>
+        <g v-for="n in threatNodes" :key="'tri'+n.id"
+          :transform="`translate(${n.x},${n.y}) scale(${invZoom})`">
+          <polygon
+            points="0,-22 -6,-12 6,-12"
+            :fill="n.threat_level==='danger'?'#d1483f':'#e0a83e'"
+            class="threat-triangle"/>
+        </g>
 
-        <circle v-if="pilotNode" :cx="pilotNode.x" :cy="pilotNode.y"
-          r="14" fill="none" stroke="#5fc9ff" stroke-width="2" stroke-opacity="0.6"
-          class="pulse-ring"/>
-
-        <text v-for="n in nodes" :key="'t'+n.id"
-          :x="n.x" :y="n.y+(n.ep?16:12)" text-anchor="middle"
-          class="lbl" :class="{on: hover===n.id||n.ep}">{{n.name}}</text>
+        <g v-if="pilotNode"
+          :transform="`translate(${pilotNode.x},${pilotNode.y}) scale(${invZoom})`">
+          <circle r="14" fill="none" stroke="#5fc9ff" stroke-width="2" stroke-opacity="0.6"
+            class="pulse-ring"/>
+        </g>
       </g>
     </svg>
 
@@ -120,6 +123,13 @@ const viewBox = computed(() => {
 
 const mapTransform = computed(() => `translate(${panX.value},${panY.value}) scale(${zoom.value})`)
 
+const invZoom = computed(() => 1 / zoom.value)
+
+function nodeRadius(ep) {
+  const base = ep ? 8 : 5
+  return base / Math.sqrt(zoom.value)
+}
+
 const pilotNode = computed(() => {
   if (!currentSystemId.value) return null
   return nodes.value.find(n => n.id === currentSystemId.value) || null
@@ -140,6 +150,26 @@ function enterNode(e, n) {
 function leaveNode() {
   hover.value = null
   tipData.value = null
+}
+
+let zoomAnim = null
+
+function animateZoom(targetZoom, targetPanX, targetPanY) {
+  if (zoomAnim) cancelAnimationFrame(zoomAnim)
+  const startZoom = zoom.value
+  const startX = panX.value
+  const startY = panY.value
+  const startTime = performance.now()
+  const duration = 50
+
+  function step(now) {
+    const t = Math.min((now - startTime) / duration, 1)
+    zoom.value = startZoom + (targetZoom - startZoom) * t
+    panX.value = startX + (targetPanX - startX) * t
+    panY.value = startY + (targetPanY - startY) * t
+    if (t < 1) zoomAnim = requestAnimationFrame(step)
+  }
+  zoomAnim = requestAnimationFrame(step)
 }
 
 onMounted(() => {
@@ -166,9 +196,9 @@ onMounted(() => {
     const nz = Math.max(0.1, Math.min(10, zoom.value * d))
     const rect = el.getBoundingClientRect()
     const mx = e.clientX - rect.left, my = e.clientY - rect.top
-    panX.value = mx - (mx - panX.value) * (nz / zoom.value)
-    panY.value = my - (my - panY.value) * (nz / zoom.value)
-    zoom.value = nz
+    const npx = mx - (mx - panX.value) * (nz / zoom.value)
+    const npy = my - (my - panY.value) * (nz / zoom.value)
+    animateZoom(nz, npx, npy)
   }, { passive: false })
 })
 </script>
@@ -193,18 +223,6 @@ onMounted(() => {
 
 .map-svg:active {
   cursor: grabbing;
-}
-
-.lbl {
-  font: 700 10px Rajdhani, sans-serif;
-  fill: #dbe6ea;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.lbl.on {
-  opacity: 1;
 }
 
 .pilot-info {
