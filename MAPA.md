@@ -270,19 +270,30 @@ location.js
    - Override especial: origen/destino siempre #5fc9ff
 5. threatNodes computed → filtra nodos con warning/danger para triángulos pulsantes
 6. segments computed → pares de nodos adyacentes para líneas de ruta
-7. useMapInteraction composable → drag (pan) + wheel (zoom) + teclado (+/-/0)
+7. Zoom animado (50ms linear vía requestAnimationFrame) con mouse wheel + pincha
 8. Tooltip: muestra nombre, sec status, region, kills, gate_details con badges D/H/S
 ```
+
+### Comportamiento de zoom "vast space"
+
+El zoom implementa un comportamiento de "espacio vasto" donde los elementos se escalan de forma distinta:
+
+| Elemento | Comportamiento de zoom |
+|----------|------------------------|
+| `<line>` | `vector-effect="non-scaling-stroke"` — el grosor se mantiene constante (1.5px) sin importar el zoom |
+| `<circle>` | Radio = `baseR / Math.sqrt(zoom)` — los nodos se encogen al acercarse |
+| `<polygon>` | `counter-scale="1/zoom"` — tamaño constante en pantalla |
+| `pulse-ring` | `counter-scale="1/zoom"` — tamaño constante en pantalla |
+| `text` (tooltip) | Renderizado via portal, no afectado por zoom |
 
 ### Elementos del mapa SVG
 
 | Elemento | Descripción |
 |----------|-------------|
-| `<line>` | Segmentos de ruta entre sistemas adyacentes |
-| `<circle>` | Nodos de sistema (radio 8px si es endpoint, 5px si es intermedio) |
-| `<polygon>` | Triángulos pulsantes sobre sistemas con amenaza (warning=amarillo, danger=rojo) |
-| `<circle class="pulse-ring">` | Anillo pulsante sobre la posición actual del piloto |
-| `<text>` | Labels de nombre de sistema (visibles en hover o para endpoints) |
+| `<line>` | Segmentos de ruta entre sistemas adyacentes (grosor constante 1.5px) |
+| `<circle>` | Nodos de sistema (radio 8px base en zoom=1, encoge con zoom) |
+| `<polygon>` | Triángulos pulsantes sobre sistemas con amenaza (tamaño constante en pantalla) |
+| `<circle class="pulse-ring">` | Anillo pulsante sobre la posición actual del piloto (tamaño constante) |
 
 ### Colores del mapa
 
@@ -581,13 +592,13 @@ SECURITY_COLORS = { highsec: '#5fc9ff', lowsec: '#e0a83e', nullsec: '#d1483f', u
 
 | # | Requerimiento | Estado |
 |---|---|---|
-| 2.5.1 | Mapa SVG con drag (pan) y scroll (zoom) | ✅ |
+| 2.5.1 | Mapa SVG con drag (pan) y scroll (zoom) con animación suave (50ms) | ✅ |
 | 2.5.2 | Nodos coloreados por security level y threat level | ✅ |
 | 2.5.3 | Triángulos pulsantes en sistemas con amenaza (warning/danger) | ✅ |
 | 2.5.4 | Indicador de posición del piloto (anillo pulsante) | ✅ |
 | 2.5.5 | Tooltip con kills, region, gate details y badges D/H/S | ✅ |
-| 2.5.6 | Controles de zoom (+/-/0) y teclado | ✅ |
-| 2.5.7 | Labels visibles para origin/destination y sistemas con amenaza | ✅ |
+| 2.5.6 | Zoom "vast space": non-scaling-stroke + nodos encogen + elementos UI constante | ✅ |
+| 2.5.7 | Labels de sistema | ⏳ pendiente reintegro (bug de doble escala corregido) |
 
 ### Fase 3-6 — Ver guia-proyecto.md
 
